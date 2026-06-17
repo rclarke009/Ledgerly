@@ -733,7 +733,56 @@
       color: var(--text);
     }
     .ask-preset-chip:hover { border-color: var(--accent); color: var(--accent); }
-    .ask-mic-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-bottom: 1rem; }
+    .ask-actions-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 0.25rem;
+    }
+    .ask-mic-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .ask-mic-group .field-hint {
+      margin: 0;
+    }
+    @media (min-width: 600px) {
+      .ask-actions-row {
+        justify-content: space-between;
+      }
+      .ask-mic-group {
+        margin-left: auto;
+      }
+    }
+    @keyframes ask-btn-spin {
+      to { transform: rotate(360deg); }
+    }
+    #btn-ask-submit.is-loading {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    #btn-ask-submit.is-loading::after {
+      content: '';
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: ask-btn-spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #btn-ask-submit.is-loading::after {
+        animation: none;
+        border-right-color: currentColor;
+        opacity: 0.5;
+      }
+    }
     .ingest-drop-zone {
       border: 2px dashed var(--border);
       border-radius: 10px;
@@ -1000,10 +1049,6 @@
         <form id="form-ask">
           <label for="ask-question">Question (optional if you use a preset above)</label>
           <textarea id="ask-question" name="question" rows="4" placeholder="Or type your question here…"></textarea>
-          <div class="ask-mic-row">
-            <button type="button" id="btn-ask-mic">Speak question</button>
-            <span id="ask-mic-status" class="field-hint" hidden>Listening…</span>
-          </div>
           <details class="ingest-text-details">
             <summary>Limit to one document (optional)</summary>
             <label for="ask-doc_id">Document</label>
@@ -1011,7 +1056,13 @@
               <option value="">All documents</option>
             </select>
           </details>
-          <button type="submit">Ask</button>
+          <div class="ask-actions-row">
+            <button type="submit" id="btn-ask-submit">Ask</button>
+            <div class="ask-mic-group">
+              <span id="ask-mic-status" class="field-hint" hidden>Listening…</span>
+              <button type="button" id="btn-ask-mic">Speak question</button>
+            </div>
+          </div>
         </form>
         <details id="ask-stream-now-details" class="ingest-text-details" hidden>
           <summary>Answer now (uses more CPU)</summary>
@@ -3371,14 +3422,67 @@
         return 'Working…';
       }
 
-      function setAskLoadingText(el, text) {
+      var ASK_WITTY_MESSAGES = [
+        'Dangling the carrot in front of the hamsters…',
+        'The hamsters are warming up their wheels…',
+        'Shuffling papers in the burrow…',
+        'Consulting the wheel of compound interest…',
+        'Herding tiny accountants…',
+        'Still running — no hamsters were harmed…'
+      ];
+      var ASK_WITTY_INTERVAL_MS = 4500;
+      var _askWittyTimer = null;
+      var _askWittyIndex = 0;
+      var _askPhaseUntil = 0;
+
+      function setAskSubmitLoading(loading) {
+        var btn = document.getElementById('btn-ask-submit');
+        if (!btn) return;
+        btn.disabled = !!loading;
+        btn.classList.toggle('is-loading', !!loading);
+        btn.setAttribute('aria-busy', loading ? 'true' : 'false');
+      }
+
+      function startAskWittyRotation(el) {
+        stopAskWittyRotation();
+        if (!el) return;
+        _askWittyTimer = setInterval(function () {
+          if (!el || el.hidden) return;
+          if (Date.now() < _askPhaseUntil) return;
+          _askWittyIndex = (_askWittyIndex + 1) % ASK_WITTY_MESSAGES.length;
+          setSlowWaitText(el, ASK_WITTY_MESSAGES[_askWittyIndex]);
+        }, ASK_WITTY_INTERVAL_MS);
+      }
+
+      function stopAskWittyRotation() {
+        if (_askWittyTimer) {
+          clearInterval(_askWittyTimer);
+          _askWittyTimer = null;
+        }
+      }
+
+      function setAskLoadingText(el, text, opts) {
         if (!el) return;
         setSlowWaitText(el, text);
+        if (opts && opts.fromPhase) _askPhaseUntil = Date.now() + 3500;
+      }
+
+      function showAskLoading(el, initialText) {
+        if (!el) return;
+        el.hidden = false;
+        el.classList.add('ask-loading-active');
+        ensureSlowWaitWave(el);
+        el.classList.add('slow-wait-active');
+        setAskLoadingText(el, initialText);
+        startAskWittyRotation(el);
+        startSlowWait(el);
       }
 
       function hideAskLoading(el) {
         if (!el) return;
+        stopAskWittyRotation();
         stopSlowWait(el);
+        el.classList.remove('slow-wait-active', 'ask-loading-active');
         el.hidden = true;
       }
 
@@ -3418,14 +3522,14 @@
           var data = await res.json().catch(function () { return {}; });
           if (!res.ok) throw new Error(formatApiErrorForUser(data, 'Could not check ask job', res));
           if (data.stage) {
-            setAskLoadingText(targets.loading, askPhaseLabel(data.stage) + ' You can leave this page.');
+            setAskLoadingText(targets.loading, askPhaseLabel(data.stage) + ' You can leave this page.', { fromPhase: true });
           }
           if (data.status === 'success') {
             var struct = { tables: data.tables || [], charts: data.charts || [] };
             renderAnswerBlocks(targets.answerMd, targets.answerExtra, data.answer || '—', struct, targets.charts || []);
             targets.answerBlock.hidden = false;
             hideAskLoading(targets.loading);
-            if (submitBtn) submitBtn.disabled = false;
+            setAskSubmitLoading(false);
             return;
           }
           if (data.status === 'failed') {
@@ -3451,10 +3555,8 @@
         };
         msg.hidden = true;
         answerBlock.hidden = true;
-        askLoading.hidden = false;
-        setAskLoadingText(askLoading, 'Queued — preparing your answer in the background…');
-        startSlowWait(askLoading);
-        if (submitBtn) submitBtn.disabled = true;
+        showAskLoading(askLoading, 'Queued — preparing your answer in the background…');
+        setAskSubmitLoading(true);
         try {
           var res = await fetch(getApiBase() + '/ask/jobs', {
             method: 'POST',
@@ -3467,7 +3569,7 @@
             msg.className = 'message error';
             msg.hidden = false;
             hideAskLoading(askLoading);
-            if (submitBtn) submitBtn.disabled = false;
+            setAskSubmitLoading(false);
             return;
           }
           var waitMin = Math.max(1, Math.round((data.estimated_wait_sec || 600) / 60));
@@ -3481,7 +3583,7 @@
           msg.className = 'message error';
           msg.hidden = false;
           hideAskLoading(askLoading);
-          if (submitBtn) submitBtn.disabled = false;
+          setAskSubmitLoading(false);
         }
       }
 
@@ -3494,10 +3596,8 @@
         const askLoading = document.getElementById('ask-loading');
         msg.hidden = true;
         answerBlock.hidden = true;
-        askLoading.hidden = false;
-        setAskLoadingText(askLoading, askPhaseLabel('routing'));
-        startSlowWait(askLoading);
-        if (submitBtn) submitBtn.disabled = true;
+        showAskLoading(askLoading, askPhaseLabel('routing'));
+        setAskSubmitLoading(true);
         var controller = new AbortController();
         var timeoutId = setTimeout(function () { controller.abort(); }, ASK_STREAM_TIMEOUT_MS);
         try {
@@ -3513,7 +3613,7 @@
             msg.className = 'message error';
             msg.hidden = false;
             hideAskLoading(askLoading);
-            if (submitBtn) submitBtn.disabled = false;
+            setAskSubmitLoading(false);
             return;
           }
           answerMd.textContent = '';
@@ -3540,7 +3640,7 @@
             if (obj.top_chunks !== undefined || obj.answer !== undefined || obj.delta !== undefined) {
               hideAskLoading(askLoading);
             } else if (obj.phase) {
-              setAskLoadingText(askLoading, askPhaseLabel(obj.phase));
+              setAskLoadingText(askLoading, askPhaseLabel(obj.phase), { fromPhase: true });
             }
           }
           const reader = res.body.getReader();
@@ -3594,7 +3694,7 @@
             renderAnswerBlocks(answerMd, answerExtra, finalMd, structFinal, chartAskInst);
           }
           hideAskLoading(askLoading);
-          if (submitBtn) submitBtn.disabled = false;
+          setAskSubmitLoading(false);
         } catch (err) {
           var errMsg = err && err.name === 'AbortError'
             ? 'Ask took too long and was cancelled. Try background mode or a simpler question.'
@@ -3603,7 +3703,7 @@
           msg.className = 'message error';
           msg.hidden = false;
           hideAskLoading(askLoading);
-          if (submitBtn) submitBtn.disabled = false;
+          setAskSubmitLoading(false);
         } finally {
           clearTimeout(timeoutId);
         }
