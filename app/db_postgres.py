@@ -35,8 +35,6 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS facts_learned TEXT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS original_vault_path TEXT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS extracted_position TEXT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS extracted_obligation TEXT;
-ALTER TABLE positions ADD COLUMN IF NOT EXISTS resolved_at BIGINT;
-ALTER TABLE obligations ADD COLUMN IF NOT EXISTS resolved_at BIGINT;
 
 CREATE TABLE IF NOT EXISTS chunks (
     chunk_id TEXT PRIMARY KEY,
@@ -91,6 +89,9 @@ CREATE TABLE IF NOT EXISTS obligations (
     document_id TEXT,
     created_at BIGINT NOT NULL
 );
+
+ALTER TABLE positions ADD COLUMN IF NOT EXISTS resolved_at BIGINT;
+ALTER TABLE obligations ADD COLUMN IF NOT EXISTS resolved_at BIGINT;
 
 CREATE TABLE IF NOT EXISTS trigger_events (
     id TEXT PRIMARY KEY,
