@@ -12,9 +12,14 @@ until docker compose exec -T ollama ollama list >/dev/null 2>&1; do
 done
 
 echo "Making sure models are available (one-time download if needed)..."
-docker compose exec -T ollama ollama pull qwen3:8b
+if grep -qE '^(LEDGERLY_PROFILE|FINELLY_PROFILE)=(portable|low_spec)' .env 2>/dev/null; then
+  docker compose exec -T ollama ollama pull qwen2.5:3b
+  docker compose exec -T ollama ollama pull moondream
+else
+  docker compose exec -T ollama ollama pull qwen3:8b
+  docker compose exec -T ollama ollama pull llava:7b
+fi
 docker compose exec -T ollama ollama pull nomic-embed-text
-docker compose exec -T ollama ollama pull llava:7b
 
 echo "Waiting for Ledgerly web app..."
 until curl -sf http://localhost:8000/health 2>/dev/null | grep -q '"healthy":true'; do
