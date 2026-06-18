@@ -70,6 +70,29 @@ def test_dashboard_actionable_within_30_days(tmp_path):
     conn.close()
 
 
+def test_dashboard_actionable_cd_and_obligation_grouped(tmp_path):
+    conn = _conn(tmp_path)
+    now = int(time.time())
+    from datetime import datetime, timedelta, timezone
+
+    soon = (datetime.now(timezone.utc) + timedelta(days=10)).strftime("%Y-%m-%d")
+    due = (datetime.now(timezone.utc) + timedelta(days=12)).strftime("%Y-%m-%d")
+    insert_account(conn, "acc1", "Riverside Community Credit Union", now)
+    insert_position(conn, "pos1", "acc1", "CD", now, now, None, 25000.0, None, soon, None)
+    insert_obligation(conn, "obl1", "Mortgage Statement - July 2026", due, now)
+    conn.commit()
+    data = build_dashboard(conn)
+    tips = data["renewal_tips"]
+    assert data["actionable"] is True
+    cd_idx = next(i for i, t in enumerate(tips) if "matures on" in t)
+    decide_idx = next(i for i, t in enumerate(tips) if "Decide whether to renew" in t)
+    contact_idx = next(i for i, t in enumerate(tips) if "Contact your institution" in t)
+    compare_idx = next(i for i, t in enumerate(tips) if "Compare current rates" in t)
+    mortgage_idx = next(i for i, t in enumerate(tips) if "Mortgage Statement" in t)
+    assert cd_idx < decide_idx < contact_idx < compare_idx < mortgage_idx
+    conn.close()
+
+
 def test_dashboard_actionable_multi_cd(tmp_path):
     conn = _conn(tmp_path)
     now = int(time.time())

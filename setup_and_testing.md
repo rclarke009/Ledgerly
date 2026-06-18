@@ -170,6 +170,104 @@ If the UI shows an error while **Ingest**, **Ask**, or **Saved data** is running
 
 ---
 
+## Final live tests (Ask tab)
+
+Use this section **after** the app is running and you have done at least the [Quick test flow](#quick-test-flow) once. These are **real questions to type into the Ask tab** — not curl, not pytest. They complement the API steps in [`test_plan.md`](test_plan.md) and the Status-tab walkthrough in [`docs/decision-status-test-guide.md`](docs/decision-status-test-guide.md).
+
+**How to run each test**
+
+1. Open **http://localhost:8000/** → **Ask** tab.
+2. Copy the question below into **Question** (edit dates or names only if your test data differs).
+3. Optionally pick **Limit to document** when noted.
+4. Submit and check:
+   - **Answer** — sensible, grounded in your data or documents (not generic filler).
+   - **Source chunks** — expand when you expect document retrieval; empty is OK for pure “saved data” fast paths.
+   - **Errors** — none; if you see **Reference ID**, note it for logs.
+
+**Suggested setup (pick one track or do both)**
+
+| Track | What to prepare first |
+|-------|------------------------|
+| **Documents** | Ingest tab: paste the CD sample from [curl Ingest example](#ingest-post) below, or paste text from [`docs/sample-cd-maturity-letter.md`](docs/sample-cd-maturity-letter.md) / [`docs/sample-bill-reminder.md`](docs/sample-bill-reminder.md). |
+| **Saved data** | **Data** tab: one account, one CD position (use a maturity date **within the next 90 days** for maturing-soon tests), and one obligation due **within the next 30 days** (e.g. property tax). |
+
+---
+
+### A — Document questions (RAG)
+
+Run these after ingesting at least one financial document. Leave **Limit to document** on **All documents** unless noted.
+
+| # | Type this question | What a good answer should do |
+|---|-------------------|------------------------------|
+| A1 | `What does this document say about early withdrawal?` | Mention penalty terms (e.g. 90 days interest) if you ingested the CD terms sample; cite source chunks from that doc. |
+| A2 | `Summarize the fees and rates mentioned.` | Pull APY/rates and any fees from ingested text; source chunks should match. |
+| A3 | `What is the maturity date on this CD?` | State the date from the letter or terms doc (e.g. March 15, 2026 or the date in your sample). |
+| A4 | `What are my options at maturity?` | List renew / transfer / withdraw (or equivalent) from a maturity notice. |
+| A5 | `When is the property tax due and how much?` | Use after ingesting [`docs/sample-bill-reminder.md`](docs/sample-bill-reminder.md): due date and amount from the notice. |
+| A6 | `How can I pay this bill?` | Mail, online, or in-person options from the bill sample. |
+
+**Document-scoped (optional):** Repeat **A1** or **A2** with **Limit to document** set to your ingested title — answer should stay on that file and chunks should all be from that `doc_id`.
+
+---
+
+### B — Saved data questions (accounts, CDs, obligations)
+
+Run these after entering data in **Data → Accounts**, **Positions**, and **Obligations**. No ingest required for these to be meaningful.
+
+| # | Type this question | What a good answer should do |
+|---|-------------------|------------------------------|
+| B1 | `How much do I have in CDs?` | Total and per-CD breakdown from your positions (fast path — answer is structured, often without source chunks). |
+| B2 | `What's maturing in the next 3 months?` | List CDs/positions with maturity in the next 90 days; “none” if you only added far-future dates. |
+| B3 | `What bills or obligations are due soon?` | Obligations due within the configured window (default 30 days). |
+| B4 | `Summarize my accounts and holdings.` | Account names plus positions under each. |
+| B5 | `When does my biggest CD mature?` | Uses saved positions (may combine with LLM); should name the CD and date you entered. |
+| B6 | `What is my mortgage payment and when is it due?` | Only if you added an obligation whose description includes **mortgage** (e.g. “Home mortgage — First National”). |
+
+---
+
+### C — Combined documents + saved data
+
+Prepare **both** tracks above, then try:
+
+| # | Type this question | What a good answer should do |
+|---|-------------------|------------------------------|
+| C1 | `I got a maturity notice — what should I do before my CD matures?` | Blend letter options (renew/transfer/withdraw) with your tracked maturity date if positions match. |
+| C2 | `Do I have any bills due soon that match documents I've uploaded?` | Compare obligations in Data with ingested bill/tax notices when dates align. |
+| C3 | `Find my CD maturity letter and tell me the APR.` | Document search + rate from ingested maturity letter. |
+
+---
+
+### D — Sanity checks (should fail gracefully)
+
+| # | Type this question | What a good answer should do |
+|---|-------------------|------------------------------|
+| D1 | `What is the weather in Paris tomorrow?` | No relevant context — expect a short “don't have relevant context or data” style message and **empty** source chunks (with a fresh/empty database). |
+| D2 | `Summarize the fees and rates mentioned.` | With **no documents ingested** and no rate data in positions, expect no-context or a clear “nothing to summarize” outcome. |
+
+---
+
+### E — Other tabs (quick UI smoke tests)
+
+Not Ask questions, but useful in the same “final check” session:
+
+1. **Status** → **Check status** — “No action required” vs “Actionable” per [`docs/decision-status-test-guide.md`](docs/decision-status-test-guide.md).
+2. **Documents** → **Load documents** — ingested titles appear; **Edit** tags; **Delete** removes a test doc you no longer need.
+3. **Ingest** → upload a small PDF or paste text again — success message, then document shows up in Ask’s document dropdown.
+
+---
+
+### Pass criteria (short checklist)
+
+- [ ] At least one **document** question (A1–A6) returns an answer grounded in ingested text with matching **Source chunks**.
+- [ ] At least one **saved data** question (B1–B4) returns structured totals or lists without inventing accounts you never entered.
+- [ ] One **combined** question (C1–C3) is reasonable when both docs and Data are populated.
+- [ ] **D1** does not hallucinate weather or fake holdings on an empty or irrelevant question.
+- [ ] No unexplained errors; any **Reference ID** is captured if something fails.
+
+For deeper API/log debugging on the same questions, use [`test_plan.md`](test_plan.md) with the same wording in `POST /ask` and grep `X-Request-ID` in logs.
+
+---
+
 ## curl commands
 
 Base URL assumed: `http://localhost:8000`. Use `-s` for quieter output.

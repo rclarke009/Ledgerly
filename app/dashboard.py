@@ -196,34 +196,42 @@ def build_dashboard(conn: Any, days: int = 365) -> dict[str, Any]:
     if actionable:
         status = "actionable"
         memo = f"You have {len(triggers)} item(s) needing attention in the next {days_label} days."
-        for t in triggers:
-            if t[1] == "maturity" and t[2] == "position":
-                pos = get_position(conn, t[3])
-                if pos:
-                    _, account_id, asset_type, desc, principal, _, maturity_date, _, _, _ = pos
-                    acc = get_account(conn, account_id)
-                    acc_name = acc[1] if acc else "your account"
-                    label = asset_type + (f" {desc}" if desc else "")
-                    amt = f" ({format(principal, ',.0f')} dollars)" if principal is not None else ""
+        maturity_triggers = [t for t in triggers if t[1] == "maturity" and t[2] == "position"]
+        obligation_triggers = [
+            t for t in triggers if t[1] == "obligation_due" and t[2] == "obligation"
+        ]
+
+        has_cd_tips = False
+        for t in maturity_triggers:
+            pos = get_position(conn, t[3])
+            if pos:
+                _, account_id, asset_type, desc, principal, _, maturity_date, _, _, _ = pos
+                acc = get_account(conn, account_id)
+                acc_name = acc[1] if acc else "your account"
+                label = asset_type + (f" {desc}" if desc else "")
+                amt = f" ({format(principal, ',.0f')} dollars)" if principal is not None else ""
+                renewal_tips.append(
+                    f"Your {label}{amt} at {acc_name} matures on {maturity_date}."
+                )
+                renewal_tips.append(
+                    "Decide whether to renew, withdraw, or move the funds."
+                )
+                has_cd_tips = True
+        if has_cd_tips:
+            renewal_tips.extend([
+                "Contact your institution before the date if you want to renew or withdraw.",
+                "Compare current rates before automatically renewing a CD.",
+            ])
+
+        for t in obligation_triggers:
+            for row in obligations:
+                if row[0] == t[3]:
                     renewal_tips.append(
-                        f"Your {label}{amt} at {acc_name} matures on {maturity_date}."
+                        f"Pay or schedule: {row[1]} due {row[2]}."
                     )
-                    renewal_tips.append(
-                        "Decide whether to renew, withdraw, or move the funds."
-                    )
-            elif t[1] == "obligation_due" and t[2] == "obligation":
-                for row in obligations:
-                    if row[0] == t[3]:
-                        renewal_tips.append(
-                            f"Pay or schedule: {row[1]} due {row[2]}."
-                        )
-                        break
+                    break
         if not renewal_tips:
             renewal_tips.append("Review upcoming maturity and due dates with your bank or advisor.")
-        renewal_tips.extend([
-            "Contact your institution before the date if you want to renew or withdraw.",
-            "Compare current rates before automatically renewing a CD.",
-        ])
     else:
         status = "no_action_required"
         if with_maturity:
