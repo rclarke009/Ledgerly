@@ -57,6 +57,8 @@ services:
       - LOG_JSON=${LOG_JSON:-false}
     volumes:
       - ledgerly_data:/data
+      # Live-reload UI from the repo without rebuilding the image (local dev).
+      - ./static:/app/static:ro
       # Optional originals vault on the host (set LEDGERLY_ORIGINALS_VAULT=/data/vault in .env):
       # - ./ledgerly-vault:/data/vault
     depends_on:
