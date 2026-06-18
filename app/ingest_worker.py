@@ -133,7 +133,10 @@ async def _run_one_job(app: Any, store: IngestJobStore, job: IngestJob) -> None:
                 raise ValueError("Unsupported image type")
             await progress_cb("extracting", 5.0)
             image_base64 = base64.b64encode(raw).decode("ascii")
-            text = await llm_client.image_to_text_for_ingest(image_base64)
+            hint = job.source or job.title or (
+                "upload.pdf" if job.kind == IngestJobKind.PDF else "upload.jpg"
+            )
+            text = await llm_client.image_to_text_for_ingest(image_base64, filename_hint=hint)
             text = _strip_nul_bytes((text or "").strip())
             if len(text) < 10:
                 raise ValueError("No text extracted from image")

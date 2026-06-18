@@ -25,6 +25,8 @@ def test_heuristic_route_presets():
     assert heuristic_route("What's maturing in the next 3 months?") == "fast_path"
     assert heuristic_route("Find my tax documents like 1099 forms.") == "rag_only"
     assert heuristic_route("How much do I have in CDs?") == "fast_path"
+    assert heuristic_route("What is my total mortgage payment?") == "fast_path"
+    assert heuristic_route("Show my mortgage statement") == "rag_only"
 
 
 def test_needs_finance_intent_llm_skipped_by_default():

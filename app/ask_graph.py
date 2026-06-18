@@ -7,7 +7,7 @@ import re
 from typing import Any, Awaitable, Callable
 
 from app.answer_format import ANSWER_FORMAT_PROMPT_SUFFIX
-from app.ask_fast_paths import detect_fast_path_kind, try_fast_path_answer
+from app.ask_fast_paths import detect_fast_path_kind, try_fast_path_answer, _is_mortgage_payment_question
 from app.ask_trace import log_ask_event
 from app.config import LLM_INTER_CALL_SLEEP_SEC
 from app.db import list_accounts, list_obligations, list_positions
@@ -27,7 +27,7 @@ def _normalize(q: str) -> str:
 
 def heuristic_route(question: str) -> Route | None:
     q = _normalize(question)
-    if detect_fast_path_kind(question):
+    if detect_fast_path_kind(question) or _is_mortgage_payment_question(question):
         return "fast_path"
     doc_patterns = (
         r"\b1099\b",
@@ -36,6 +36,9 @@ def heuristic_route(question: str) -> Route | None:
         r"\bfind\b.*\b(document|form|statement|letter)\b",
         r"\bw-?2\b",
         r"\b1098\b",
+        r"\bmortgage\b",
+        r"\bhome\s+loan\b",
+        r"\bpayment\s+statement\b",
     )
     if any(re.search(p, q) for p in doc_patterns):
         return "rag_only"
@@ -161,6 +164,7 @@ async def build_prompt_and_chunks(
             doc_id=ask_request.doc_id,
             doc_ids=ask_request.doc_ids,
             tag=ask_request.tag,
+            question=question,
         )
         log_ask_event("retrieval_gate", chunks=len(top_chunks), layer2_chars=len(layer2))
 

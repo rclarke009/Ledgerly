@@ -371,6 +371,21 @@ def get_doc_ids_by_tag(conn: psycopg.Connection, tag: str) -> list[str]:
         return [row[0] for row in cur.fetchall()]
 
 
+def find_doc_ids_by_label_keyword(conn: psycopg.Connection, keyword: str) -> list[str]:
+    """Return doc_ids whose title or source contains keyword (case-insensitive)."""
+    needle = f"%{keyword.strip().lower()}%"
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT doc_id FROM documents
+            WHERE LOWER(COALESCE(title, '')) LIKE %s OR LOWER(COALESCE(source, '')) LIKE %s
+            ORDER BY created_at DESC
+            """,
+            (needle, needle),
+        )
+        return [row[0] for row in cur.fetchall()]
+
+
 def get_account_ids_by_document_id(conn: psycopg.Connection, doc_id: str) -> list[str]:
     with conn.cursor() as cur:
         cur.execute(

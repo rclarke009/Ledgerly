@@ -808,7 +808,8 @@ async def ingest_image(request: Request):
         )
     try:
         image_base64 = base64.b64encode(raw).decode("ascii")
-        text = await llm_client.image_to_text_for_ingest(image_base64)
+        filename = getattr(file, "filename", None) or "upload.jpg"
+        text = await llm_client.image_to_text_for_ingest(image_base64, filename_hint=filename)
     except (LLMServiceError, LLMRateLimitedError, LLMUpstreamTimeoutError) as e:
         logger.exception("Image text extraction failed", exc_info=e)
         raise HTTPException(status_code=503, detail=str(e)) from e
@@ -818,7 +819,6 @@ async def ingest_image(request: Request):
             status_code=400,
             detail="No text could be extracted from the image.",
         )
-    filename = getattr(file, "filename", None) or "upload.jpg"
     doc_id_raw = form.get("doc_id")
     doc_id = str(doc_id_raw).strip() if isinstance(doc_id_raw, str) else None
     if not doc_id:

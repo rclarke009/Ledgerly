@@ -413,6 +413,24 @@ def get_doc_ids_by_tag(conn: sqlite3.Connection, tag: str) -> list[str]:
     return [row[0] for row in cursor.fetchall()]
 
 
+def find_doc_ids_by_label_keyword(conn: sqlite3.Connection, keyword: str) -> list[str]:
+    """Return doc_ids whose title or source contains keyword (case-insensitive)."""
+    if is_postgres_conn(conn):
+        from app import db_postgres
+
+        return db_postgres.find_doc_ids_by_label_keyword(conn, keyword)
+    needle = f"%{keyword.strip().lower()}%"
+    cursor = conn.execute(
+        """
+        SELECT doc_id FROM documents
+        WHERE LOWER(COALESCE(title, '')) LIKE ? OR LOWER(COALESCE(source, '')) LIKE ?
+        ORDER BY created_at DESC
+        """,
+        (needle, needle),
+    )
+    return [row[0] for row in cursor.fetchall()]
+
+
 def get_account_ids_by_document_id(conn: sqlite3.Connection, doc_id: str) -> list[str]:
     """Return list of account IDs that have document_id = doc_id."""
     if is_postgres_conn(conn):

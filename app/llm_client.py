@@ -77,8 +77,19 @@ async def answer_with_image(image_base64: str, prompt: str) -> str:
     return _message_content(data)
 
 
-async def image_to_text_for_ingest(image_base64: str) -> str:
-    prompt = "Extract all readable text from this document image. Return plain text only."
+FINANCIAL_IMAGE_OCR_PROMPT = """Extract all readable text from this financial document image. Return plain text only.
+
+Prioritize payment summaries, amount due, principal and interest, escrow, fees, total amount due, payment due date, loan number, borrower, property address, and outstanding balance.
+
+Preserve dollar amounts exactly as shown (e.g. $2,247.00). Preserve dates exactly as shown.
+
+Do not describe the image, comment on blur, or add markdown code fences. If text is unclear, transcribe your best reading without apologizing."""
+
+
+async def image_to_text_for_ingest(image_base64: str, *, filename_hint: str | None = None) -> str:
+    prompt = FINANCIAL_IMAGE_OCR_PROMPT
+    if filename_hint and filename_hint.strip():
+        prompt += f"\n\nUploaded filename hint: {filename_hint.strip()}"
     return await answer_with_image(image_base64, prompt)
 
 

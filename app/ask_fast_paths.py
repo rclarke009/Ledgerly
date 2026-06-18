@@ -37,6 +37,9 @@ def detect_fast_path_kind(question: str) -> FastPathKind | None:
 
 
 def try_fast_path_answer(conn: Any, question: str) -> str | None:
+    mortgage = _answer_mortgage_payment(conn, question)
+    if mortgage is not None:
+        return mortgage
     kind = detect_fast_path_kind(question)
     if kind is None:
         return None
@@ -120,6 +123,37 @@ def _answer_cd_totals(conn: Any) -> str:
             f"- **{label}** at {acc_name}: {_format_money(principal)}"
             + (f", {rate_txt}" if rate_txt else "")
             + (f", {mat_txt}" if mat_txt else "")
+        )
+    return "\n".join(lines)
+
+
+def _is_mortgage_payment_question(question: str) -> bool:
+    q = normalize_question(question)
+    return bool(
+        re.search(r"\bmortgage\b|\bhome\s+loan\b", q)
+        and re.search(r"\b(payment|pay|due|amount|cost|total)\b", q)
+    )
+
+
+def _answer_mortgage_payment(conn: Any, question: str) -> str | None:
+    if not _is_mortgage_payment_question(question):
+        return None
+    rows = list_obligations(conn)
+    mortgage_rows = [r for r in rows if "mortgage" in (r[1] or "").lower()]
+    if not mortgage_rows:
+        return None
+    lines = ["## Mortgage payment", ""]
+    if len(mortgage_rows) == 1:
+        _obl_id, desc, due_date, amount, priority, *_rest = mortgage_rows[0]
+        lines.append(
+            f"Your **{desc}** payment is {_format_money(amount)}, due {due_date or '—'}."
+        )
+        return "\n".join(lines)
+    lines.append("Tracked mortgage obligations:")
+    for _obl_id, desc, due_date, amount, priority, *_rest in mortgage_rows:
+        lines.append(
+            f"- **{desc}** — {_format_money(amount)}, due {due_date or '—'}"
+            + (f", priority {priority}" if priority else "")
         )
     return "\n".join(lines)
 
