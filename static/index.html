@@ -2261,7 +2261,7 @@
         container.appendChild(wrap);
         return true;
       }
-      function setIngestSuccessMessage(text, actionItems) {
+      function setIngestSuccessMessage(text, actionItems, homeFollowUp) {
         var msg = document.getElementById('ingest-message');
         if (!msg) return;
         msg.innerHTML = '';
@@ -2271,7 +2271,6 @@
         span.textContent = text;
         msg.appendChild(span);
         var items = actionItems || [];
-        if (!items.length) return;
         var actionsWrap = document.createElement('div');
         actionsWrap.className = 'ingest-success-actions';
         items.forEach(function (item) {
@@ -2288,6 +2287,19 @@
             actionsWrap.appendChild(row);
           }
         });
+        if (homeFollowUp) {
+          var homeRow = document.createElement('div');
+          homeRow.className = 'ingest-success-actions-row';
+          var homeBtn = document.createElement('button');
+          homeBtn.type = 'button';
+          homeBtn.className = 'home-row-btn home-row-btn-primary';
+          homeBtn.textContent = homeFollowUpButtonLabel(homeFollowUp);
+          homeBtn.addEventListener('click', function () {
+            goToHomeFollowUp(homeFollowUp);
+          });
+          homeRow.appendChild(homeBtn);
+          actionsWrap.appendChild(homeRow);
+        }
         if (actionsWrap.childNodes.length) msg.appendChild(actionsWrap);
       }
       function loadDocumentsList() {
@@ -2610,12 +2622,85 @@
         return '';
       }
 
-      function shouldGoHomeAfterIngest(data) {
+      function hasHomeFollowUp(data) {
         if (!data) return false;
         if (data.auto_tracked_position || data.auto_tracked_obligation) return true;
         if (data.extracted_position && data.extracted_position.maturity_date) return true;
         if (data.extracted_obligation && data.extracted_obligation.due_date) return true;
         return false;
+      }
+
+      function getHomeFollowUpTarget(data) {
+        if (!data) return null;
+        if (data.extracted_position && data.extracted_position.maturity_date && !data.auto_tracked_position) {
+          return { sectionId: 'home-pending-extractions', docId: data.doc_id, kind: 'position', needsConfirm: true };
+        }
+        if (data.extracted_obligation && data.extracted_obligation.due_date && !data.auto_tracked_obligation) {
+          return { sectionId: 'home-pending-obligation-extractions', docId: data.doc_id, kind: 'obligation', needsConfirm: true };
+        }
+        if (data.auto_tracked_position || data.auto_tracked_obligation) {
+          return { sectionId: 'home-recently-added', needsConfirm: false };
+        }
+        return null;
+      }
+
+      function getHomeFollowUpTargetFromResults(results) {
+        var i;
+        for (i = 0; i < results.length; i++) {
+          var pendingTarget = getHomeFollowUpTarget(results[i]);
+          if (pendingTarget && pendingTarget.needsConfirm) return pendingTarget;
+        }
+        for (i = 0; i < results.length; i++) {
+          var anyTarget = getHomeFollowUpTarget(results[i]);
+          if (anyTarget) return anyTarget;
+        }
+        return null;
+      }
+
+      function homeFollowUpButtonLabel(target) {
+        if (!target) return '';
+        if (target.needsConfirm) return 'Go to Home to confirm tracking →';
+        return 'View on Home →';
+      }
+
+      function isHomeTabActive() {
+        var panel = document.getElementById('panel-home');
+        return panel && panel.classList.contains('active');
+      }
+
+      function goToHomeFollowUp(target) {
+        if (!target) return;
+        try {
+          sessionStorage.setItem('ledgerly-home-scroll-target', JSON.stringify(target));
+          sessionStorage.setItem('ledgerly-track-prompted', '1');
+        } catch (e) {}
+        setTab('home');
+      }
+
+      function applyHomeScrollTarget() {
+        if (!isHomeTabActive()) return;
+        var raw;
+        try {
+          raw = sessionStorage.getItem('ledgerly-home-scroll-target');
+          if (!raw) return;
+          sessionStorage.removeItem('ledgerly-home-scroll-target');
+        } catch (e) {
+          return;
+        }
+        var target;
+        try {
+          target = JSON.parse(raw);
+        } catch (e2) {
+          return;
+        }
+        var el = null;
+        if (target.docId && target.kind) {
+          el = document.getElementById('home-pending-' + target.kind + '-' + target.docId);
+        }
+        if (!el && target.sectionId) {
+          el = document.getElementById(target.sectionId);
+        }
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
 
       function formatExtractionLine(ext) {
@@ -2814,6 +2899,10 @@
       }
 
       function maybePromptPendingExtraction(pending, pendingObligations) {
+        if (!isHomeTabActive()) return;
+        try {
+          if (sessionStorage.getItem('ledgerly-home-scroll-target')) return;
+        } catch (e) {}
         if (!pending || !pending.length) {
           if (pendingObligations && pendingObligations.length) {
             try {
@@ -2857,7 +2946,7 @@
         msg.className = 'message success';
         msg.hidden = false;
         var actionItems = [{ docId: data.doc_id, meta: data }];
-        if (shouldGoHomeAfterIngest(data)) {
+        if (hasHomeFollowUp(data)) {
           var successMsg = 'Success! Document added: ' + (data.doc_id || '') + '.';
           if (data.facts_learned && data.facts_learned.length) {
             successMsg += ' Facts learned: ' + data.facts_learned.length + ' bullet(s).';
@@ -2865,16 +2954,12 @@
           var trackedLine = formatAutoTrackedLine(data);
           if (trackedLine) {
             successMsg += ' ' + trackedLine + '.';
+          } else if (data.extracted_position && data.extracted_position.maturity_date) {
+            successMsg += ' Found a maturity date — confirm tracking on Home.';
+          } else if (data.extracted_obligation && data.extracted_obligation.due_date) {
+            successMsg += ' Found a due date — confirm on Home.';
           }
-          setIngestSuccessMessage(successMsg, actionItems);
-          setTab('home');
-          if (!trackedLine) {
-            if (data.extracted_position && data.extracted_position.maturity_date) {
-              showTrackModal(data.doc_id, data.extracted_position, 'position');
-            } else if (data.extracted_obligation && data.extracted_obligation.due_date) {
-              showTrackModal(data.doc_id, data.extracted_obligation, 'obligation');
-            }
-          }
+          setIngestSuccessMessage(successMsg, actionItems, getHomeFollowUpTarget(data));
         } else {
           var friendly = 'Saved: ' + (data.doc_id || 'document') + '.';
           if (data.facts_learned && data.facts_learned.length) {
@@ -3120,14 +3205,6 @@
           formRef.file.value = '';
           setIngestBusyLocal(false);
           loadDashboard();
-          var goHome = false;
-          for (var gi = 0; gi < successResults.length; gi++) {
-            if (shouldGoHomeAfterIngest(successResults[gi])) {
-              goHome = true;
-              break;
-            }
-          }
-          if (goHome) setTab('home');
           var trackedNotes = [];
           for (var si = 0; si < successResults.length; si++) {
             var note = formatAutoTrackedLine(successResults[si]);
@@ -3136,7 +3213,11 @@
           if (trackedNotes.length) {
             batchMsg = batchMsg + ' ' + trackedNotes.join(' ');
           }
-          setIngestSuccessMessage(batchMsg, actionItems);
+          var batchHomeFollowUp = getHomeFollowUpTargetFromResults(successResults);
+          if (batchHomeFollowUp && batchHomeFollowUp.needsConfirm && trackedNotes.length === 0) {
+            batchMsg += ' Confirm tracking on Home.';
+          }
+          setIngestSuccessMessage(batchMsg, actionItems, batchHomeFollowUp);
         }
         if (hasPdf && form.file.files.length > 1) {
           msg.textContent = 'Queueing ' + form.file.files.length + ' file(s)…';
@@ -4832,6 +4913,7 @@
           var ext = item.extraction || {};
           var card = document.createElement('div');
           card.className = 'home-pending-card';
+          card.id = 'home-pending-position-' + item.document_id;
           var inst = ext.institution ? (' at ' + ext.institution) : '';
           var principal = ext.principal != null ? (' · ' + formatMoney(ext.principal)) : '';
           var mat = ext.maturity_date ? (' · matures ' + ext.maturity_date) : '';
@@ -4864,6 +4946,7 @@
           var ext = item.extraction || {};
           var card = document.createElement('div');
           card.className = 'home-pending-card';
+          card.id = 'home-pending-obligation-' + item.document_id;
           card.innerHTML =
             '<p><strong>Track this bill from your document?</strong></p>' +
             '<p>' + escapeHtml(formatObligationExtractionLine(ext)) + '</p>' +
@@ -5183,6 +5266,7 @@
             totalsBlock.hidden = true;
           }
         }
+        applyHomeScrollTarget();
       }
 
       function loadDashboard() {
