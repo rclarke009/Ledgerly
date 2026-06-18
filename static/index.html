@@ -3507,6 +3507,17 @@
         btn.setAttribute('aria-busy', loading ? 'true' : 'false');
       }
 
+      function resetAskQuestionInput() {
+        var form = document.getElementById('form-ask');
+        var ta = document.getElementById('ask-question');
+        if (form && typeof form.reset === 'function') form.reset();
+        if (ta) {
+          ta.value = '';
+          ta.focus();
+          ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
+
       function startAskWittyRotation(el) {
         stopAskWittyRotation();
         if (!el) return;
@@ -3720,6 +3731,7 @@
             hideAskLoading(targets.loading);
             setAskSubmitLoading(false);
             refreshAskHistory();
+            resetAskQuestionInput();
             return;
           }
           if (data.status === 'failed') {
@@ -3884,6 +3896,7 @@
               : null;
             renderAnswerBlocks(answerMd, answerExtra, finalMd, structFinal, chartAskInst);
             refreshAskHistory();
+            resetAskQuestionInput();
           }
           hideAskLoading(askLoading);
           setAskSubmitLoading(false);
