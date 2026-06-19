@@ -33,7 +33,7 @@ You should have **Ledgerly-Portable.zip** (from a download, USB stick, or email)
 1. Open the **Ledgerly** folder.
 2. Double-click **Setup.bat**.
 3. A black window will open and copy files. When it says installation is complete and a **Ledgerly** shortcut is on your desktop, you’re done.
-4. You can close that window. You can also delete the **Ledgerly** folder you just unzipped if you like; the app is now installed under `%LocalAppData%\Ledgerly`.
+4. On first install, **Setup.bat** creates a **`.env`** file with cool/quiet defaults for this PC (smaller AI models, slower but gentler on the fan). You can close that window. You can also delete the **Ledgerly** folder you just unzipped if you like; the app is now installed under `%LocalAppData%\Ledgerly`.
 
 ---
 

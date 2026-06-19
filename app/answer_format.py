@@ -22,12 +22,50 @@ class AnswerChart(BaseModel):
     values: list[float] = Field(default_factory=list)
 
 LEDGERLY_STRUCTURED_MARKER = "\n---LEDGERLY_STRUCTURED---\n"
+_STRUCTURED_MARKER_LINE = re.compile(
+    r"^\s*(?:---\s*)?LEDGERLY_STRUCTURED(?:\s*---)?\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_LOOSE_TAIL_ARRAY = re.compile(
+    r"(tables|charts)\s*:\s*(\[[\s\S]*?\])",
+    re.IGNORECASE,
+)
 ANSWER_FORMAT_PROMPT_SUFFIX = (
     "\n\nAfter your answer, on its own line, output exactly:\n"
     "---LEDGERLY_STRUCTURED---\n"
-    "Then optional JSON with keys tables (array) and charts (array). "
+    'Then optional JSON with keys tables (array) and charts (array), e.g. {"tables":[],"charts":[]}. '
     "Omit the marker if you have no structured data."
 )
+
+
+def _trim_trailing_hr_before_marker(body: str) -> str:
+    return re.sub(r"\n---\s*$", "", body.rstrip()).rstrip()
+
+
+def _find_structured_marker_start(text: str) -> int | None:
+    matches = list(_STRUCTURED_MARKER_LINE.finditer(text))
+    if not matches:
+        return None
+    return matches[-1].start()
+
+
+def _parse_structured_tail(tail_raw: str) -> dict[str, Any] | None:
+    tail_raw = tail_raw.strip()
+    if not tail_raw:
+        return None
+    try:
+        tail = json.loads(tail_raw)
+        if isinstance(tail, dict):
+            return tail
+    except json.JSONDecodeError:
+        pass
+    loose: dict[str, Any] = {}
+    for key, raw_array in _LOOSE_TAIL_ARRAY.findall(tail_raw):
+        try:
+            loose[key.lower()] = json.loads(raw_array)
+        except json.JSONDecodeError:
+            continue
+    return loose or None
 
 
 def split_structured(raw: str) -> tuple[str, dict[str, Any] | None]:
@@ -35,19 +73,21 @@ def split_structured(raw: str) -> tuple[str, dict[str, Any] | None]:
         return "", None
     text = raw.replace("\r\n", "\n")
     idx = text.rfind(LEDGERLY_STRUCTURED_MARKER)
-    if idx == -1:
+    if idx != -1:
+        body = _trim_trailing_hr_before_marker(text[:idx].strip())
+        tail_raw = text[idx + len(LEDGERLY_STRUCTURED_MARKER) :].strip()
+        return body, _parse_structured_tail(tail_raw)
+
+    marker_start = _find_structured_marker_start(text)
+    if marker_start is None:
         return raw.strip(), None
-    body = text[:idx].strip()
-    tail_raw = text[idx + len(LEDGERLY_STRUCTURED_MARKER) :].strip()
-    if not tail_raw:
+
+    body = _trim_trailing_hr_before_marker(text[:marker_start].strip())
+    marker_line_end = text.find("\n", marker_start)
+    if marker_line_end == -1:
         return body, None
-    try:
-        tail = json.loads(tail_raw)
-        if isinstance(tail, dict):
-            return body, tail
-    except json.JSONDecodeError:
-        pass
-    return body, None
+    tail_raw = text[marker_line_end + 1 :].strip()
+    return body, _parse_structured_tail(tail_raw)
 
 
 def merge_structured_to_response(

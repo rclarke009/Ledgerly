@@ -99,11 +99,12 @@
     <header>
       <p class="back"><a href="./">← Back to Ledgerly</a></p>
       <h1>How to use Ledgerly</h1>
-      <p class="lead">Plain-language guide to the web app: ingest documents, enter accounts and holdings, ask questions, and check status. No financial jargon assumed.</p>
+      <p class="lead">Private CD ladder and cash-management assistant: track holdings, obligations, and IRA awareness; get decision memos only when something is about to matter.</p>
     </header>
 
     <h2>What Ledgerly does</h2>
-    <p>Ledgerly helps you track <strong>safe, income-earning assets</strong> (for example CDs and money-market balances) and <strong>upcoming bills or obligations</strong>. After you enter accounts and holdings, you can get reminders when something matures or a payment is due, and you can ask questions about your numbers and uploaded documents.</p>
+    <p>Ledgerly is a <strong>decision-window assistant</strong> for safe income: CDs, money market, known bills, and IRA awareness (not investment advice). Your <strong>database tables are the source of truth</strong>; uploaded documents support and verify.</p>
+    <p>Ledgerly recommends action <strong>only on triggers</strong>—a CD maturing soon, a bill due, or an IRA relevant date. Otherwise Home shows <strong>All clear</strong>.</p>
 
     <h2>Quick glossary</h2>
     <table>
@@ -115,41 +116,48 @@
         <tr><td><strong>APR</strong></td><td>Annual interest rate as a number (e.g. <code>4.5</code> for 4.5%).</td></tr>
         <tr><td><strong>Maturity date</strong></td><td>When a CD (or similar) matures—often when you can withdraw or renew without penalty.</td></tr>
         <tr><td><strong>Obligation</strong></td><td>Something you must pay by a date (tax, insurance, loan payment, etc.).</td></tr>
+        <tr><td><strong>CD ladder</strong></td><td>Staggered CD rungs shown on Home—institution, rate, maturity, next action.</td></tr>
+        <tr><td><strong>Decision memo</strong></td><td>At maturity: options (hold/roll/MMF/wait), rate comparison, liquidity check.</td></tr>
+        <tr><td><strong>IRA overview</strong></td><td>Awareness-only rows (RMD dates, notes)—not buy/sell advice.</td></tr>
         <tr><td><strong>Ingest</strong></td><td>Add a PDF, image, or pasted text so Ledgerly can search it and answer questions about it.</td></tr>
         <tr><td><strong>Doc ID</strong></td><td>Optional short label for a document (e.g. <code>statement-jan-2024</code>).</td></tr>
       </tbody>
     </table>
 
     <h2>Home (start here)</h2>
-    <p>When you open Ledgerly, <strong>Home</strong> loads automatically. You see upcoming maturities, bills due soon, and whether anything needs attention—<strong>no button to press</strong>.</p>
-    <p>When something is due soon, Home shows a <strong>What to do</strong> section with plain-language next steps. Each maturity or bill appears once—urgent items under <strong>What to do</strong>, otherwise under <strong>Next maturity</strong> or <strong>Coming up</strong>.</p>
+    <p><strong>Home</strong> loads automatically: status, <strong>CD ladder</strong> table, IRA awareness lines, upcoming maturities, and bills due.</p>
+    <p>When a trigger fires, <strong>What to do</strong> appears with tips plus a <strong>Decision memo</strong> (rate comparison vs benchmarks, liquidity cross-check, recommendation). Use <strong>Refresh</strong> to reload.</p>
 
-    <h2>Add document (2 taps)</h2>
-    <p>Go to <strong>Add document</strong>, drop a statement or letter on the big zone—ingest starts automatically. If Ledgerly finds a maturity date, a large dialog asks <strong>Yes, track this</strong> (one tap). No typing required.</p>
+    <h2>Add document</h2>
+    <p>Go to <strong>Add document</strong>, drop one or more PDFs or images on the big zone (or click to browse), then click <strong>Ingest</strong>. Processing starts right away; you can add more files while earlier ones run—up to 10 per session. When Ledgerly finds a maturity date, a large dialog asks <strong>Yes, track this</strong>. Check <strong>Processing</strong> at the bottom of the tab for each file’s result.</p>
     <ul>
-      <li>Upload <strong>PDF</strong> or images (<strong>JPG, PNG</strong>). One file at a time works best.</li>
+      <li>Upload <strong>PDF</strong> or images (<strong>JPG, PNG</strong>). Select several at once in the file picker if you like.</li>
+      <li>The queue is not saved if you close the page—re-select your files to try again.</li>
       <li>Optional details and folder watching are collapsed—skip them unless you need them.</li>
       <li>To paste text instead, open <strong>Or paste text instead</strong> and tap <strong>Ingest</strong>.</li>
     </ul>
 
     <h2>Ask</h2>
-    <p>Use the <strong>preset question</strong> buttons for common questions (maturing soon, CD totals, bills due). You can also use <strong>Speak question</strong> or type your own.</p>
+    <p>Preset buttons include <strong>Next decision trigger</strong>, maturing soon, CD totals, and bills due. Use <strong>Speak question</strong> or type your own.</p>
+    <p>After an answer, use <strong>Ask follow-up</strong> to continue the same conversation. Optional document scope carries forward unless you change the dropdown. <strong>New conversation</strong> starts fresh.</p>
 
     <h2>Manage (advanced)</h2>
-    <p><strong>Data</strong> — fix accounts, positions, and obligations manually if needed.</p>
+    <p><strong>Data</strong> — accounts, positions (ladder fields: start date, next action, liquidity note), obligations, <strong>IRA overview</strong>.</p>
     <p><strong>Documents</strong> — review ingested files. Use <strong>Delete</strong> to remove a document from Ask; any CD or bill tracked from that upload is removed too.</p>
     <p><strong>Past advice</strong> — history of earlier status checks.</p>
     <h3>Accounts</h3>
     <p>Institution-level containers: name (required), optional type and institution.</p>
     <h3>Positions</h3>
-    <p>Holdings inside an account: account (required), asset type (required), optional description, principal, APR, maturity date (date picker).</p>
+    <p>Holdings inside an account: account (required), asset type (required), optional description, principal, APR, start date, maturity date, next action, liquidity note.</p>
     <h3>Obligations</h3>
     <p>Bills or deadlines: description and due date (required), optional amount estimate and priority.</p>
+    <h3>IRA overview</h3>
+    <p>Awareness only: account name, institution, type, balance estimate, RMD note, next relevant date.</p>
 
     <h2>Example workflow (easiest path)</h2>
     <ol>
       <li><strong>Home:</strong> Open the app—your maturities appear automatically.</li>
-      <li><strong>Add document:</strong> Drop a statement or letter (ingest starts on its own).</li>
+      <li><strong>Add document:</strong> Drop files and click <strong>Ingest</strong>.</li>
       <li><strong>Confirm:</strong> Tap <strong>Yes, track this</strong> in the dialog.</li>
       <li><strong>Home:</strong> Check upcoming maturities anytime; tap <strong>Refresh</strong> only if needed.</li>
     </ol>

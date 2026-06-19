@@ -1,35 +1,75 @@
-# Ledgerly — Private Cash & Document Assistant
+# Ledgerly — Private CD Ladder & Cash Management Assistant
 
-Ledgerly is a **private financial assistant** that helps manage safe-income assets (CDs, money market) and financial documents. It acts as a source-of-truth tracker, document analysis assistant, and decision-support tool for maturity and liquidity events.
+Ledgerly is a **private cash-management assistant** focused on taxable CD ladders, safe cash alternatives (money market), known cash obligations, and IRA awareness. It is **not** a general investment or portfolio agent.
 
 ## Principles
 
-- **Database is the source of truth** — Structured tables (accounts, positions, obligations) are authoritative; the AI assists with extraction, explanation, and memos.
-- **Table-driven decisions** — Decisions are driven from structured data; documents support and verify.
-- **Trigger-based reasoning** — Recommendations only when meaningful triggers occur (e.g. CD maturity, obligation due); otherwise "No action required."
-- **Privacy first** — Documents and data stay local or in private storage; document text is not sent to public APIs; reference-data lookups use only generic, non-personal parameters.
+- **Database is the source of truth** — Structured tables (`accounts`, `positions`, `obligations`, `ira_overview`) are authoritative; documents verify but do not override holdings.
+- **Table-driven decisions** — Decisions come from your operating tables, not document-by-document analysis.
+- **Trigger-based reasoning** — Recommendations only when a trigger fires (CD maturity, obligation due, IRA relevant date); otherwise **No action required**.
+- **Source hierarchy** — (1) Your SoT tables, (2) uploaded documents, (3) generic public rate benchmarks, (4) general explanation. Public benchmarks never override your actual holdings.
+- **Action threshold** — Do not recommend switching unless: material yield advantage, liquidity need, simplicity gain, known obligation, or imminent maturity.
+- **Privacy first** — Documents stay local; OpenAI (optional) receives sanitized prompts only (amounts/rates, no names).
 
-## Privacy
+## Version 1 scope
 
-- **Documents:** Stored only in your local SQLite (or your own Supabase). No document text is sent to third-party APIs.
-- **Embedding & LLM:** Defaults to local Ollama (`http://localhost:11434`). All embedding and generation can stay on your machine.
-- **Reference data:** When the app fetches CD rates or fee info from the web, it sends only generic parameters (e.g. "6-month CD rates"). No account names, balances, or document content are ever included in those requests. **Public data in; no personal data out.**
-- **Config:** Do not set API keys or external URLs for document/LLM flows if you want full local operation. See `.env.example` and `app/config.py`.
+### Do
 
-## Main features
+- Maintain **CD ladder** positions (institution, type, principal, APY, start/maturity, next action, liquidity note)
+- Track **obligations** and cross-check maturing principal vs nearby bills
+- **IRA overview** rows for awareness (RMD dates, notes — not investment advice)
+- **Home** status, ladder table, trigger alerts (default 30-day window; IRA 45-day)
+- **Decision memos** at maturity: options (hold/roll/MMF/wait), rate comparison vs benchmarks, confidence footer
+- Ingest PDFs/images; extract and confirm positions/obligations
+- **Ask** presets including “What is my next decision trigger?”
 
-- **GET /decision** — Run the trigger engine; get "No action required" or actionable triggers plus a memo and **sources** (user data refs and web links).
-- **GET /decision/history** — List past decision results for the Past advice view.
-- **POST /ask** — Ask questions over your **documents** (RAG) and over your **data** (accounts, positions, obligations). One place to ask anything.
-- **CRUD** — Accounts, positions, obligations: `GET/POST/PATCH/DELETE /accounts`, `/positions`, `/obligations`.
-- **Documents** — Ingest, list, and ask over ingested docs (existing RAG).
+### Do not
+
+- Stock screening, active trading, portfolio optimization, macro commentary
+- Autonomous “always-on” coaching or churn recommendations
+- Tax or legal advice (awareness only)
+
+## Operating tables
+
+| Table | Purpose |
+|-------|---------|
+| `accounts` + `positions` | Taxable CD ladder and safe-income holdings |
+| `obligations` | Known cash needs |
+| `ira_overview` | IRA awareness (optional) |
+
+## Output modes
+
+1. **Status check** — Home dashboard: ladder, next dates, liquidity totals, no-action vs actionable
+2. **Decision memo** — `GET /decision`: operational memo, rate comparisons, liquidity cross-check, optional OpenAI bullets
+3. **Document extraction** — Ingest → structured extract → confirm/auto-track
+
+## API (cash-focused)
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /dashboard` | Home snapshot incl. `ladder_positions`, `ira_overview` |
+| `GET /decision` | Trigger engine + structured memo |
+| `GET /decision/history` | Past advice log |
+| `GET/POST/PATCH/DELETE /accounts`, `/positions`, `/obligations` | SoT CRUD |
+| `GET/POST/PATCH/DELETE /ira-overview` | IRA awareness CRUD |
+| `POST /ask` | RAG + fast paths over data and documents |
+
+## Configuration
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `MATURITY_DAYS_AHEAD` | 30 | CD maturity trigger window |
+| `OBLIGATION_DAYS_AHEAD` | 30 | Bill due trigger window |
+| `IRA_DAYS_AHEAD` | 45 | IRA awareness trigger window |
+| `LIQUIDITY_CROSSCHECK_DAYS` | 14 | ±days for obligation vs maturity cross-check |
+| `REFERENCE_CD_RATES` | (empty) | Optional JSON benchmark overrides |
+| `REFERENCE_MMF_APR` | 4.50 | MMF benchmark for comparisons |
 
 ## Run
 
 ```bash
 cd <project-root> && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
-# Optional: set DATABASE_PATH, LLM_BASE_URL, EMBED_BASE_URL in .env
 uvicorn app.main:app --reload
 ```
 
-Open the UI (e.g. http://localhost:8000). **Home** loads maturities and due dates automatically. Add documents under **Add document**, confirm tracking on **Home**, and use **Ask** preset buttons for common questions. Advanced fixes live under **Manage**.
+Open the UI at http://localhost:8000 — **Home** for status and ladder; **Manage → Data** for tables; **Ask** for decision-framed questions.

@@ -54,6 +54,10 @@ services:
       # LLM_MODEL / LLAVA_MODEL: omit so .env / LEDGERLY_PROFILE defaults apply (see app/config.py).
       # Internal pgvector DB (overrides DATABASE_URL in .env for Compose). Not exposed outside Docker.
       - DATABASE_URL=postgresql://ledgerly:ledgerly@postgres:5432/ledgerly
+      # Persist originals across container rebuilds (ledgerly_data volume).
+      - LEDGERLY_ORIGINALS_VAULT=/data/vault
+      # Host browser reaches the app via published port; client IP is the Docker bridge, not 127.0.0.1.
+      - ALLOW_LOCAL_FILE_REVEAL=true
       # In-container URL; do not point at host localhost from .env when using Docker.
       - FINANCE_TOOLS_BASE_URL=http://finance-mcp:8000
       # Observability: enable with the observability Compose profile (see METRICS_ENABLED / LOG_JSON in .env.example).

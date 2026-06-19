@@ -15,6 +15,17 @@ if errorlevel 8 (
   exit /b 1
 )
 
+:: First-time .env: prefer Dad's XPS 15 portable template, else generic example
+if not exist "%INSTALL_DIR%\.env" (
+  if exist "%INSTALL_DIR%\.env.portable-xps15.example" (
+    copy /Y "%INSTALL_DIR%\.env.portable-xps15.example" "%INSTALL_DIR%\.env" >nul
+    echo Created .env from portable XPS 15 profile (cool/quiet defaults).
+  ) else if exist "%INSTALL_DIR%\.env.example" (
+    copy /Y "%INSTALL_DIR%\.env.example" "%INSTALL_DIR%\.env" >nul
+    echo Created .env from .env.example.
+  )
+)
+
 :: Create desktop shortcut (PowerShell)
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$WshShell = New-Object -ComObject WScript.Shell;" ^

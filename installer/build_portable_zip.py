@@ -12,7 +12,7 @@ from pathlib import Path
 SKIP_TOP_LEVEL = frozenset(
     {".env", ".git", "__pycache__", ".venv", "installer", ".idea", ".vscode"}
 )
-DOTFILES_TO_INCLUDE = (".dockerignore", ".env.example")
+DOTFILES_TO_INCLUDE = (".dockerignore", ".env.example", ".env.portable-xps15.example")
 ZIP_NAME = "Ledgerly-Portable.zip"
 
 

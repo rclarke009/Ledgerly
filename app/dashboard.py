@@ -11,6 +11,7 @@ from app.db import (
     get_position,
     list_documents_with_extracted_position,
     list_documents_with_extracted_obligation,
+    list_ira_overview,
     list_obligations,
     list_positions,
     list_recent_positions,
@@ -29,7 +30,10 @@ def _days_until(event_date: str | None, now: datetime) -> int | None:
 
 
 def _position_item(row: tuple, conn: Any, now: datetime) -> dict[str, Any]:
-    pos_id, account_id, asset_type, desc, principal, rate_apr, maturity_date, doc_id, _, _ = row
+    pos_id, account_id, asset_type, desc, principal, rate_apr, maturity_date, doc_id, _, _ = row[:10]
+    start_date = row[10] if len(row) > 10 else None
+    next_action = row[11] if len(row) > 11 else None
+    liquidity_note = row[12] if len(row) > 12 else None
     acc = get_account(conn, account_id)
     acc_name = acc[1] if acc else account_id
     institution = acc[3] if acc else None
@@ -49,6 +53,9 @@ def _position_item(row: tuple, conn: Any, now: datetime) -> dict[str, Any]:
         "rate_apr": rate_apr,
         "maturity_date": maturity_date,
         "document_id": doc_id,
+        "start_date": start_date,
+        "next_action": next_action,
+        "liquidity_note": liquidity_note,
         "label": label,
         "days_until": days,
     }
@@ -75,7 +82,7 @@ def _format_money(amount: float | None) -> str:
 
 
 def _recent_position_label(row: tuple, conn: Any) -> str:
-    _, account_id, asset_type, desc, principal, _, maturity_date, _, _, _ = row
+    _, account_id, asset_type, desc, principal, _, maturity_date, *_rest = row[:10]
     acc = get_account(conn, account_id)
     institution = acc[3] if acc and acc[3] else (acc[1] if acc else None)
     parts = [asset_type or "CD"]
@@ -205,7 +212,7 @@ def build_dashboard(conn: Any, days: int = 365) -> dict[str, Any]:
         for t in maturity_triggers:
             pos = get_position(conn, t[3])
             if pos:
-                _, account_id, asset_type, desc, principal, _, maturity_date, _, _, _ = pos
+                _, account_id, asset_type, desc, principal, _, maturity_date, *_rest = pos
                 acc = get_account(conn, account_id)
                 acc_name = acc[1] if acc else "your account"
                 label = asset_type + (f" {desc}" if desc else "")
@@ -309,6 +316,34 @@ def build_dashboard(conn: Any, days: int = 365) -> dict[str, Any]:
             }
         )
 
+    ladder_positions: list[dict[str, Any]] = []
+    for row in positions:
+        maturity_date = row[6]
+        if maturity_date is None or not str(maturity_date).strip():
+            continue
+        asset_type = (row[2] or "").strip().lower()
+        if asset_type not in ("cd", "money market", "treasury", "brokered cd"):
+            if "cd" not in asset_type and "money" not in asset_type:
+                continue
+        ladder_positions.append(_position_item(row, conn, now))
+    ladder_positions.sort(key=lambda x: x.get("maturity_date") or "")
+
+    ira_overview: list[dict[str, Any]] = []
+    for row in list_ira_overview(conn):
+        ira_id, account_name, institution, account_type, balance_estimate, rmd_note, next_date, doc_id, _, _ = row
+        ira_overview.append(
+            {
+                "id": ira_id,
+                "account_name": account_name,
+                "institution": institution,
+                "account_type": account_type,
+                "balance_estimate": balance_estimate,
+                "rmd_note": rmd_note,
+                "next_relevant_date": next_date,
+                "days_until": _days_until(next_date, now),
+            }
+        )
+
     return {
         "status": status,
         "actionable": actionable,
@@ -326,4 +361,6 @@ def build_dashboard(conn: Any, days: int = 365) -> dict[str, Any]:
         "pending_obligation_extractions": pending_obligations,
         "recently_added": _build_recently_added(conn, now),
         "days_window": days,
+        "ladder_positions": ladder_positions,
+        "ira_overview": ira_overview,
     }

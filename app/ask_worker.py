@@ -27,6 +27,7 @@ async def _run_one_ask(app: Any, store: AskJobStore, job: AskJob) -> None:
         doc_id=job.doc_id,
         tag=job.tag,
         use_rag=job.use_rag,
+        conversation_id=job.conversation_id,
     )
 
     async def progress(stage: str) -> None:
@@ -40,13 +41,15 @@ async def _run_one_ask(app: Any, store: AskJobStore, job: AskJob) -> None:
         await store.update(job)
 
     with app_db_connection(app) as conn:
-        prompt, top_chunks, route, has_context, direct_answer = await build_prompt_and_chunks(
-            conn, ask_request, progress_cb=progress
+        messages, top_chunks, route, has_context, direct_answer, related_documents = (
+            await build_prompt_and_chunks(conn, ask_request, progress_cb=progress)
         )
         job.route = route
         job.top_chunks = [
             c.model_dump() if hasattr(c, "model_dump") else dict(c) for c in top_chunks
         ]
+        job.related_documents = [d.model_dump() for d in related_documents]
+        job.turn_id = job.id
 
         if not has_context:
             job.status = AskJobStatus.SUCCESS
@@ -60,6 +63,8 @@ async def _run_one_ask(app: Any, store: AskJobStore, job: AskJob) -> None:
                 status="complete",
                 answer=job.answer,
                 route=route,
+                related_documents=related_documents,
+                top_chunks=job.top_chunks,
             )
             return
 
@@ -75,13 +80,15 @@ async def _run_one_ask(app: Any, store: AskJobStore, job: AskJob) -> None:
                 status="complete",
                 answer=job.answer,
                 route=route,
+                related_documents=related_documents,
+                top_chunks=job.top_chunks,
             )
             return
 
         await progress("generating")
         rate_limiter = app.state.rate_limiter
         await rate_limiter.acquire()
-        raw = await llm_client.answer_with_context(prompt)
+        raw = await llm_client.answer_with_messages(messages)
         body, tail = split_structured(raw)
         answer, tables, charts = merge_structured_to_response(body, tail)
         job.status = AskJobStatus.SUCCESS
@@ -99,6 +106,8 @@ async def _run_one_ask(app: Any, store: AskJobStore, job: AskJob) -> None:
             tables=job.tables,
             charts=job.charts,
             route=route,
+            related_documents=related_documents,
+            top_chunks=job.top_chunks,
         )
 
 

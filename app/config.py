@@ -168,6 +168,13 @@ INGEST_STRUCTURED_MAX_CHARS = int(os.getenv("INGEST_STRUCTURED_MAX_CHARS", str(I
 # Decision triggers: flag maturities/obligations within this many days (default 30; 60–90 for earlier reminders).
 MATURITY_DAYS_AHEAD = int(os.getenv("MATURITY_DAYS_AHEAD", "30"))
 OBLIGATION_DAYS_AHEAD = int(os.getenv("OBLIGATION_DAYS_AHEAD", "30"))
+# Cross-check maturing principal vs obligations due within ±N days of maturity.
+LIQUIDITY_CROSSCHECK_DAYS = int(os.getenv("LIQUIDITY_CROSSCHECK_DAYS", "14"))
+# Curated CD benchmark JSON for rate comparison when no live feed is configured.
+REFERENCE_CD_RATES = os.getenv("REFERENCE_CD_RATES", "").strip()
+REFERENCE_MMF_APR = float(os.getenv("REFERENCE_MMF_APR", "4.50"))
+# IRA / RMD awareness trigger window (days ahead).
+IRA_DAYS_AHEAD = int(os.getenv("IRA_DAYS_AHEAD", "45"))
 
 # Optional vault: persistent copies of originals under this absolute directory (host path).
 LEDGERLY_ORIGINALS_VAULT = os.getenv("LEDGERLY_ORIGINALS_VAULT", "").strip()

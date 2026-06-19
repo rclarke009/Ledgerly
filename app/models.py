@@ -53,6 +53,9 @@ class PositionCreate(BaseModel):
     rate_apr: float | None = None
     maturity_date: str | None = None
     document_id: str | None = None
+    start_date: str | None = None
+    next_action: str | None = None
+    liquidity_note: str | None = None
 
 
 class PositionUpdate(BaseModel):
@@ -61,6 +64,9 @@ class PositionUpdate(BaseModel):
     rate_apr: float | None = None
     maturity_date: str | None = None
     document_id: str | None = None
+    start_date: str | None = None
+    next_action: str | None = None
+    liquidity_note: str | None = None
 
 
 class PositionResponse(BaseModel):
@@ -72,6 +78,9 @@ class PositionResponse(BaseModel):
     rate_apr: float | None = None
     maturity_date: str | None = None
     document_id: str | None = None
+    start_date: str | None = None
+    next_action: str | None = None
+    liquidity_note: str | None = None
     created_at: int
     updated_at: int
 
@@ -100,6 +109,43 @@ class ObligationResponse(BaseModel):
     priority: str | None = None
     document_id: str | None = None
     created_at: int
+
+
+class IraOverviewCreate(BaseModel):
+    account_name: str = Field(..., min_length=1)
+    institution: str | None = None
+    account_type: str | None = Field(
+        default=None, description="e.g. traditional, roth — awareness only"
+    )
+    balance_estimate: float | None = None
+    rmd_note: str | None = None
+    next_relevant_date: str | None = Field(
+        default=None, description="RMD, statement, or review date (YYYY-MM-DD)"
+    )
+    document_id: str | None = None
+
+
+class IraOverviewUpdate(BaseModel):
+    account_name: str | None = None
+    institution: str | None = None
+    account_type: str | None = None
+    balance_estimate: float | None = None
+    rmd_note: str | None = None
+    next_relevant_date: str | None = None
+    document_id: str | None = None
+
+
+class IraOverviewResponse(BaseModel):
+    id: str
+    account_name: str
+    institution: str | None = None
+    account_type: str | None = None
+    balance_estimate: float | None = None
+    rmd_note: str | None = None
+    next_relevant_date: str | None = None
+    document_id: str | None = None
+    created_at: int
+    updated_at: int
 
 
 class TriggerEventResponse(BaseModel):
@@ -137,7 +183,15 @@ class DecisionResponse(BaseModel):
     sources: list[UserDataSource | WebSource] = Field(default_factory=list)
     openai_advice: list[str] = Field(
         default_factory=list,
-        description="Sanitized CD advice from OpenAI (one per maturity trigger); empty if not configured or no maturity triggers.",
+        description="Operational decision memo lines (one per maturity trigger); empty if not configured.",
+    )
+    rate_comparisons: list[str] = Field(
+        default_factory=list,
+        description="User rate vs benchmark summaries when maturity triggers fire.",
+    )
+    liquidity_notes: list[str] = Field(
+        default_factory=list,
+        description="Cross-check of maturing principal vs nearby obligations.",
     )
 
 
@@ -161,6 +215,9 @@ class AskHistoryItem(BaseModel):
     route: str | None = None
     doc_filter: str | None = None
     error: str | None = None
+    conversation_id: str | None = None
+    parent_id: str | None = None
+    related_documents: list["RelatedDocument"] = Field(default_factory=list)
 
 
 class DashboardMaturityItem(BaseModel):
@@ -174,7 +231,25 @@ class DashboardMaturityItem(BaseModel):
     rate_apr: float | None = None
     maturity_date: str | None = None
     document_id: str | None = None
+    start_date: str | None = None
+    next_action: str | None = None
+    liquidity_note: str | None = None
     label: str
+    days_until: int | None = None
+
+
+class DashboardLadderItem(DashboardMaturityItem):
+    """CD ladder row for Home table view."""
+
+
+class DashboardIraItem(BaseModel):
+    id: str
+    account_name: str
+    institution: str | None = None
+    account_type: str | None = None
+    balance_estimate: float | None = None
+    rmd_note: str | None = None
+    next_relevant_date: str | None = None
     days_until: int | None = None
 
 
@@ -243,6 +318,14 @@ class DashboardResponse(BaseModel):
     pending_obligation_extractions: list[PendingObligationExtractionItem] = Field(default_factory=list)
     recently_added: list[RecentlyAddedItem] = Field(default_factory=list)
     days_window: int = 365
+    ladder_positions: list[DashboardLadderItem] = Field(
+        default_factory=list,
+        description="All open CD-like positions sorted by maturity (ladder table).",
+    )
+    ira_overview: list[DashboardIraItem] = Field(
+        default_factory=list,
+        description="IRA awareness rows (not investment advice).",
+    )
 
 
 class ConfirmExtractionRequest(BaseModel):
@@ -413,10 +496,23 @@ class AskJobStatusResponse(BaseModel):
     top_chunks: list[dict[str, Any]] = Field(default_factory=list)
     tables: list[dict[str, Any]] = Field(default_factory=list)
     charts: list[dict[str, Any]] = Field(default_factory=list)
+    conversation_id: str | None = None
+    turn_id: str | None = None
+    related_documents: list["RelatedDocument"] = Field(default_factory=list)
+
+
+class RelatedDocument(BaseModel):
+    doc_id: str
+    title: str
+    reason: Literal["pinned", "retrieved", "topic_boost"]
 
 
 class AskRequest(BaseModel):
     question: str = Field(..., description="Question from user")
+    conversation_id: str | None = Field(
+        default=None,
+        description="Continue an existing conversation; omit to start a new one",
+    )
     top_k: int = Field(default=5, description="Will pull the top __ matches")
     doc_id: str | None = Field(default=None, description="Search only within this document")
     doc_ids: list[str] | None = Field(default=None, description="Search only within these document ids")
@@ -438,6 +534,9 @@ class AskResponse(BaseModel):
     tables: list[AnswerTable] = Field(default_factory=list, description="Structured tables from model tail, if any")
     charts: list[AnswerChart] = Field(default_factory=list, description="Chart specs from model tail, if any")
     prompt_tokens_estimate: int | None = Field(default= None, description="prompt tokens estimate") # (stub ok)
+    conversation_id: str | None = None
+    turn_id: str | None = None
+    related_documents: list[RelatedDocument] = Field(default_factory=list)
 
 
 # Max characters for template=custom user question (OpenAI general path, no RAG).

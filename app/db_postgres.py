@@ -92,6 +92,22 @@ CREATE TABLE IF NOT EXISTS obligations (
 
 ALTER TABLE positions ADD COLUMN IF NOT EXISTS resolved_at BIGINT;
 ALTER TABLE obligations ADD COLUMN IF NOT EXISTS resolved_at BIGINT;
+ALTER TABLE positions ADD COLUMN IF NOT EXISTS start_date TEXT;
+ALTER TABLE positions ADD COLUMN IF NOT EXISTS next_action TEXT;
+ALTER TABLE positions ADD COLUMN IF NOT EXISTS liquidity_note TEXT;
+
+CREATE TABLE IF NOT EXISTS ira_overview (
+    id TEXT PRIMARY KEY,
+    account_name TEXT NOT NULL,
+    institution TEXT,
+    account_type TEXT,
+    balance_estimate REAL,
+    rmd_note TEXT,
+    next_relevant_date TEXT,
+    document_id TEXT,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS trigger_events (
     id TEXT PRIMARY KEY,
@@ -144,10 +160,15 @@ CREATE TABLE IF NOT EXISTS ask_history (
     charts_json TEXT,
     route TEXT,
     doc_filter TEXT,
-    error TEXT
+    error TEXT,
+    conversation_id TEXT,
+    parent_id TEXT,
+    related_docs_json TEXT,
+    top_chunks_json TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_ask_history_asked_at ON ask_history(asked_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ask_history_conversation_id ON ask_history(conversation_id);
 """
 
 
@@ -169,6 +190,24 @@ def ensure_postgres_schema(conn: psycopg.Connection) -> None:
             )
         except psycopg.Error as e:
             logger.warning("Could not create HNSW index: %s", e)
+    _migrate_ask_history_conversation_columns(conn)
+
+
+def _migrate_ask_history_conversation_columns(conn: psycopg.Connection) -> None:
+    for col, typ in (
+        ("conversation_id", "TEXT"),
+        ("parent_id", "TEXT"),
+        ("related_docs_json", "TEXT"),
+        ("top_chunks_json", "TEXT"),
+    ):
+        with conn.cursor() as cur:
+            cur.execute(
+                f"ALTER TABLE ask_history ADD COLUMN IF NOT EXISTS {col} {typ}"
+            )
+    with conn.cursor() as cur:
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ask_history_conversation_id ON ask_history(conversation_id)"
+        )
 
 
 def _vector_literal(vec: list[float]) -> str:
@@ -540,6 +579,12 @@ def delete_account(conn: psycopg.Connection, id: str) -> None:
         cur.execute("DELETE FROM accounts WHERE id = %s", (id,))
 
 
+_POSITION_SELECT = (
+    "id, account_id, asset_type, description, principal, rate_apr, maturity_date, "
+    "document_id, created_at, updated_at, start_date, next_action, liquidity_note"
+)
+
+
 def insert_position(
     conn: psycopg.Connection,
     id: str,
@@ -552,11 +597,15 @@ def insert_position(
     rate_apr: float | None = None,
     maturity_date: str | None = None,
     document_id: str | None = None,
+    start_date: str | None = None,
+    next_action: str | None = None,
+    liquidity_note: str | None = None,
 ) -> None:
     with conn.cursor() as cur:
         cur.execute(
-            """INSERT INTO positions(id, account_id, asset_type, description, principal, rate_apr, maturity_date, document_id, created_at, updated_at)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            f"""INSERT INTO positions(id, account_id, asset_type, description, principal, rate_apr,
+               maturity_date, document_id, created_at, updated_at, start_date, next_action, liquidity_note)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (
                 id,
                 account_id,
@@ -568,6 +617,9 @@ def insert_position(
                 document_id,
                 created_at,
                 updated_at,
+                start_date,
+                next_action,
+                liquidity_note,
             ),
         )
 
@@ -576,12 +628,12 @@ def list_positions(conn: psycopg.Connection, account_id: str | None = None) -> l
     with conn.cursor() as cur:
         if account_id:
             cur.execute(
-                "SELECT id, account_id, asset_type, description, principal, rate_apr, maturity_date, document_id, created_at, updated_at FROM positions WHERE account_id = %s AND resolved_at IS NULL ORDER BY maturity_date",
+                f"SELECT {_POSITION_SELECT} FROM positions WHERE account_id = %s AND resolved_at IS NULL ORDER BY maturity_date",
                 (account_id,),
             )
         else:
             cur.execute(
-                "SELECT id, account_id, asset_type, description, principal, rate_apr, maturity_date, document_id, created_at, updated_at FROM positions WHERE resolved_at IS NULL ORDER BY maturity_date"
+                f"SELECT {_POSITION_SELECT} FROM positions WHERE resolved_at IS NULL ORDER BY maturity_date"
             )
         return cur.fetchall()
 
@@ -589,7 +641,7 @@ def list_positions(conn: psycopg.Connection, account_id: str | None = None) -> l
 def get_position(conn: psycopg.Connection, id: str) -> tuple | None:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, account_id, asset_type, description, principal, rate_apr, maturity_date, document_id, created_at, updated_at FROM positions WHERE id = %s",
+            f"SELECT {_POSITION_SELECT} FROM positions WHERE id = %s",
             (id,),
         )
         return cur.fetchone()
@@ -604,6 +656,9 @@ def update_position(
     rate_apr: float | None = None,
     maturity_date: str | None = None,
     document_id: str | None = None,
+    start_date: str | None = None,
+    next_action: str | None = None,
+    liquidity_note: str | None = None,
 ) -> None:
     updates = ["updated_at = %s"]
     params: list[Any] = [updated_at]
@@ -622,6 +677,15 @@ def update_position(
     if document_id is not None:
         updates.append("document_id = %s")
         params.append(document_id)
+    if start_date is not None:
+        updates.append("start_date = %s")
+        params.append(start_date)
+    if next_action is not None:
+        updates.append("next_action = %s")
+        params.append(next_action)
+    if liquidity_note is not None:
+        updates.append("liquidity_note = %s")
+        params.append(liquidity_note)
     params.append(id)
     with conn.cursor() as cur:
         cur.execute(
@@ -638,7 +702,7 @@ def delete_position(conn: psycopg.Connection, id: str) -> None:
 def get_positions_by_document_id(conn: psycopg.Connection, doc_id: str) -> list[tuple]:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, account_id, asset_type, description, principal, rate_apr, maturity_date, document_id, created_at, updated_at FROM positions WHERE document_id = %s ORDER BY maturity_date",
+            f"SELECT {_POSITION_SELECT} FROM positions WHERE document_id = %s ORDER BY maturity_date",
             (doc_id,),
         )
         return cur.fetchall()
@@ -877,12 +941,17 @@ def insert_ask_history_pending(
     asked_at: int,
     question: str,
     doc_filter: str | None = None,
+    conversation_id: str | None = None,
+    parent_id: str | None = None,
 ) -> None:
+    conv_id = conversation_id or id
     with conn.cursor() as cur:
         cur.execute(
-            """INSERT INTO ask_history(id, job_id, asked_at, status, question, doc_filter)
-               VALUES (%s,%s,%s,%s,%s,%s)""",
-            (id, job_id, asked_at, "pending", question, doc_filter),
+            """INSERT INTO ask_history(
+                   id, job_id, asked_at, status, question, doc_filter,
+                   conversation_id, parent_id
+               ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (id, job_id, asked_at, "pending", question, doc_filter, conv_id, parent_id),
         )
     prune_ask_history(conn)
 
@@ -897,13 +966,19 @@ def insert_ask_history_complete(
     charts_json: str | None = None,
     route: str | None = None,
     doc_filter: str | None = None,
+    conversation_id: str | None = None,
+    parent_id: str | None = None,
+    related_docs_json: str | None = None,
+    top_chunks_json: str | None = None,
 ) -> None:
+    conv_id = conversation_id or id
     with conn.cursor() as cur:
         cur.execute(
             """INSERT INTO ask_history(
                    id, job_id, asked_at, status, question, answer,
-                   tables_json, charts_json, route, doc_filter
-               ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                   tables_json, charts_json, route, doc_filter,
+                   conversation_id, parent_id, related_docs_json, top_chunks_json
+               ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (
                 id,
                 None,
@@ -915,6 +990,10 @@ def insert_ask_history_complete(
                 charts_json,
                 route,
                 doc_filter,
+                conv_id,
+                parent_id,
+                related_docs_json,
+                top_chunks_json,
             ),
         )
     prune_ask_history(conn)
@@ -930,12 +1009,24 @@ def update_ask_history_result(
     charts_json: str | None = None,
     route: str | None = None,
     error: str | None = None,
+    related_docs_json: str | None = None,
+    top_chunks_json: str | None = None,
 ) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """UPDATE ask_history SET status=%s, answer=%s, tables_json=%s, charts_json=%s,
-               route=%s, error=%s WHERE job_id=%s""",
-            (status, answer, tables_json, charts_json, route, error, job_id),
+               route=%s, error=%s, related_docs_json=%s, top_chunks_json=%s WHERE job_id=%s""",
+            (
+                status,
+                answer,
+                tables_json,
+                charts_json,
+                route,
+                error,
+                related_docs_json,
+                top_chunks_json,
+                job_id,
+            ),
         )
 
 
@@ -946,9 +1037,60 @@ def list_ask_history(
     with conn.cursor() as cur:
         cur.execute(
             """SELECT id, job_id, asked_at, status, question, answer,
-                      tables_json, charts_json, route, doc_filter, error
+                      tables_json, charts_json, route, doc_filter, error,
+                      conversation_id, parent_id, related_docs_json, top_chunks_json
                FROM ask_history ORDER BY asked_at DESC LIMIT %s""",
             (limit,),
+        )
+        return cur.fetchall()
+
+
+def get_document_title(conn: psycopg.Connection, doc_id: str) -> str | None:
+    with conn.cursor() as cur:
+        cur.execute("SELECT title FROM documents WHERE doc_id = %s", (doc_id,))
+        row = cur.fetchone()
+    return row[0] if row else None
+
+
+def get_conversation_doc_filter(conn: psycopg.Connection, conversation_id: str) -> str | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT doc_filter FROM ask_history
+               WHERE conversation_id = %s AND parent_id IS NULL
+               ORDER BY asked_at ASC LIMIT 1""",
+            (conversation_id,),
+        )
+        row = cur.fetchone()
+    return row[0] if row else None
+
+
+def get_conversation_last_turn_id(conn: psycopg.Connection, conversation_id: str) -> str | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT id FROM ask_history
+               WHERE conversation_id = %s AND status = 'complete'
+               ORDER BY asked_at DESC LIMIT 1""",
+            (conversation_id,),
+        )
+        row = cur.fetchone()
+    return row[0] if row else None
+
+
+def list_conversation_turns(
+    conn: psycopg.Connection,
+    conversation_id: str,
+    limit: int = 50,
+) -> list[tuple]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT id, job_id, asked_at, status, question, answer,
+                      tables_json, charts_json, route, doc_filter, error,
+                      conversation_id, parent_id, related_docs_json, top_chunks_json
+               FROM ask_history
+               WHERE conversation_id = %s
+               ORDER BY asked_at ASC
+               LIMIT %s""",
+            (conversation_id, limit),
         )
         return cur.fetchall()
 
@@ -956,11 +1098,128 @@ def list_ask_history(
 def prune_ask_history(conn: psycopg.Connection, limit: int = 100) -> None:
     with conn.cursor() as cur:
         cur.execute(
-            """DELETE FROM ask_history WHERE id NOT IN (
-                   SELECT id FROM ask_history ORDER BY asked_at DESC LIMIT %s
-               )""",
-            (limit,),
+            """SELECT COALESCE(conversation_id, id) AS conv_id, COUNT(*) AS cnt
+               FROM ask_history
+               GROUP BY conv_id
+               ORDER BY MAX(asked_at) DESC"""
         )
+        rows = cur.fetchall()
+    keep_conv_ids: list[str] = []
+    total = 0
+    for conv_id, cnt in rows:
+        if total + cnt > limit and keep_conv_ids:
+            break
+        keep_conv_ids.append(conv_id)
+        total += cnt
+    if not keep_conv_ids:
+        return
+    with conn.cursor() as cur:
+        cur.execute(
+            """DELETE FROM ask_history
+               WHERE COALESCE(conversation_id, id) != ALL(%s)""",
+            (keep_conv_ids,),
+        )
+
+
+def insert_ira_overview(
+    conn: psycopg.Connection,
+    id: str,
+    account_name: str,
+    created_at: int,
+    updated_at: int,
+    institution: str | None = None,
+    account_type: str | None = None,
+    balance_estimate: float | None = None,
+    rmd_note: str | None = None,
+    next_relevant_date: str | None = None,
+    document_id: str | None = None,
+) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO ira_overview(id, account_name, institution, account_type, balance_estimate,
+               rmd_note, next_relevant_date, document_id, created_at, updated_at)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (
+                id,
+                account_name,
+                institution,
+                account_type,
+                balance_estimate,
+                rmd_note,
+                next_relevant_date,
+                document_id,
+                created_at,
+                updated_at,
+            ),
+        )
+
+
+def list_ira_overview(conn: psycopg.Connection) -> list[tuple]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT id, account_name, institution, account_type, balance_estimate, rmd_note,
+               next_relevant_date, document_id, created_at, updated_at
+               FROM ira_overview ORDER BY next_relevant_date NULLS LAST, account_name"""
+        )
+        return cur.fetchall()
+
+
+def get_ira_overview(conn: psycopg.Connection, id: str) -> tuple | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT id, account_name, institution, account_type, balance_estimate, rmd_note,
+               next_relevant_date, document_id, created_at, updated_at FROM ira_overview WHERE id = %s""",
+            (id,),
+        )
+        return cur.fetchone()
+
+
+def update_ira_overview(
+    conn: psycopg.Connection,
+    id: str,
+    updated_at: int,
+    account_name: str | None = None,
+    institution: str | None = None,
+    account_type: str | None = None,
+    balance_estimate: float | None = None,
+    rmd_note: str | None = None,
+    next_relevant_date: str | None = None,
+    document_id: str | None = None,
+) -> None:
+    updates = ["updated_at = %s"]
+    params: list[Any] = [updated_at]
+    if account_name is not None:
+        updates.append("account_name = %s")
+        params.append(account_name)
+    if institution is not None:
+        updates.append("institution = %s")
+        params.append(institution)
+    if account_type is not None:
+        updates.append("account_type = %s")
+        params.append(account_type)
+    if balance_estimate is not None:
+        updates.append("balance_estimate = %s")
+        params.append(balance_estimate)
+    if rmd_note is not None:
+        updates.append("rmd_note = %s")
+        params.append(rmd_note)
+    if next_relevant_date is not None:
+        updates.append("next_relevant_date = %s")
+        params.append(next_relevant_date)
+    if document_id is not None:
+        updates.append("document_id = %s")
+        params.append(document_id)
+    params.append(id)
+    with conn.cursor() as cur:
+        cur.execute(
+            f"UPDATE ira_overview SET {', '.join(updates)} WHERE id = %s",
+            params,
+        )
+
+
+def delete_ira_overview(conn: psycopg.Connection, id: str) -> None:
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM ira_overview WHERE id = %s", (id,))
 
 
 def insert_rate_snapshot(

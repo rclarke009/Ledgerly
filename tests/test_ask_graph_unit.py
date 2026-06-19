@@ -68,21 +68,21 @@ async def test_build_prompt_fast_path_zero_llm_calls(conn):
     req = AskRequest(question="How much do I have in CDs?", top_k=3)
 
     with patch("app.llm_client.answer_with_context", new_callable=AsyncMock) as mock_llm:
-        prompt, chunks, route, has_context, direct = await build_prompt_and_chunks(conn, req)
+        messages, chunks, route, has_context, direct, related = await build_prompt_and_chunks(conn, req)
         mock_llm.assert_not_called()
 
     assert route == "fast_path"
     assert has_context is True
     assert direct is not None
     assert "CD" in direct
-    assert prompt == ""
+    assert messages == []
 
 
 @pytest.mark.asyncio
 async def test_classify_route_skips_llm_for_cd_advice(conn):
     req = AskRequest(question="Summarize my accounts and holdings.", top_k=3)
     with patch("app.llm_client.answer_with_context", new_callable=AsyncMock) as mock_llm:
-        _prompt, _chunks, route, has_context, direct = await build_prompt_and_chunks(conn, req)
+        _messages, _chunks, route, has_context, direct = (await build_prompt_and_chunks(conn, req))[:5]
         mock_llm.assert_not_called()
     assert route == "fast_path"
     assert direct is not None
@@ -97,7 +97,7 @@ async def test_structured_route_skips_embed_when_layer2_present(conn):
     req = AskRequest(question="Summarize my bills and obligations due soon.", top_k=3)
 
     with patch("app.embeddings_client.embed_text", new_callable=AsyncMock) as mock_embed:
-        _prompt, chunks, route, has_context, direct = await build_prompt_and_chunks(conn, req)
+        _messages, chunks, route, has_context, direct, _related = await build_prompt_and_chunks(conn, req)
         mock_embed.assert_not_called()
 
     assert route == "structured_data"

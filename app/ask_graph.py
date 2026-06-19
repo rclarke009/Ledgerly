@@ -7,12 +7,18 @@ import re
 from typing import Any, Awaitable, Callable
 
 from app.answer_format import ANSWER_FORMAT_PROMPT_SUFFIX
+from app.ask_conversation import (
+    expand_retrieval_query,
+    load_conversation_turns,
+    resolve_doc_scope,
+)
 from app.ask_fast_paths import detect_fast_path_kind, try_fast_path_answer, _is_mortgage_payment_question
+from app.ask_sources import detect_related_documents
 from app.ask_trace import log_ask_event
 from app.config import LLM_INTER_CALL_SLEEP_SEC
 from app.db import list_accounts, list_obligations, list_positions
 from app.finance_tools_client import fetch_finance_tools_block
-from app.models import AskRequest, RetrievedChunk
+from app.models import AskRequest, RelatedDocument, RetrievedChunk
 from app import embeddings_client
 from app.retrieval import retrieve_top_k
 
@@ -86,10 +92,21 @@ async def _layer2_summary(conn: Any) -> str:
     return "\n".join(lines)
 
 
-def _build_rag_prompt(question: str, chunks: list[RetrievedChunk], layer2: str, finance: str) -> str:
+def _build_rag_messages(
+    question: str,
+    chunks: list[RetrievedChunk],
+    layer2: str,
+    finance: str,
+    prior_turns: list[dict[str, str]],
+) -> list[dict[str, str]]:
     parts = [
         "You are Ledgerly, a private financial document assistant.",
         "Answer using the context below. Be concise and cite document ids when relevant.",
+        (
+            "If you used specific documents, briefly name them at the start "
+            '(e.g. "Based on your CD maturity letter…"). '
+            "If the user pinned a document, treat it as the primary source."
+        ),
     ]
     if layer2:
         parts.append(layer2)
@@ -101,9 +118,12 @@ def _build_rag_prompt(question: str, chunks: list[RetrievedChunk], layer2: str, 
             parts.append(f"[doc {c.doc_id} chunk {c.chunk_id}] {c.content_snippet}")
     else:
         parts.append("No matching document excerpts were found.")
-    parts.append(f"Question:\n{question}")
     parts.append(ANSWER_FORMAT_PROMPT_SUFFIX)
-    return "\n\n".join(parts)
+    messages: list[dict[str, str]] = [{"role": "system", "content": "\n\n".join(parts)}]
+    for turn in prior_turns:
+        messages.append({"role": turn["role"], "content": turn["content"]})
+    messages.append({"role": "user", "content": question})
+    return messages
 
 
 def _need_more_context(chunks: list[RetrievedChunk], layer2: str) -> bool:
@@ -123,10 +143,15 @@ async def build_prompt_and_chunks(
     ask_request: AskRequest,
     *,
     progress_cb: ProgressCallback = None,
-) -> tuple[str, list[RetrievedChunk], str, bool, str | None]:
+) -> tuple[list[dict[str, str]], list[RetrievedChunk], str, bool, str | None, list[RelatedDocument]]:
     question = (ask_request.question or "").strip()
     if not question:
-        return "", [], "empty", False, None
+        return [], [], "empty", False, None, []
+
+    scoped_request = resolve_doc_scope(conn, ask_request)
+    prior_turns: list[dict[str, str]] = []
+    if scoped_request.conversation_id:
+        prior_turns = load_conversation_turns(conn, scoped_request.conversation_id)
 
     if progress_cb:
         await progress_cb("routing")
@@ -138,7 +163,8 @@ async def build_prompt_and_chunks(
         answer = try_fast_path_answer(conn, question)
         if answer:
             log_ask_event("build_prompt", route="fast_path", llm_calls=0)
-            return "", [], "fast_path", True, answer
+            related = detect_related_documents(conn, scoped_request, [], question)
+            return [], [], "fast_path", True, answer, related
 
     layer2 = ""
     if route in ("structured_data", "rag"):
@@ -150,30 +176,38 @@ async def build_prompt_and_chunks(
         finance_block = await fetch_finance_tools_block(question, skip_llm=True)
 
     top_chunks: list[RetrievedChunk] = []
-    skip_rag = _skip_rag_for_structured(route, layer2, ask_request)
+    skip_rag = _skip_rag_for_structured(route, layer2, scoped_request)
     if skip_rag:
         log_ask_event("retrieval_gate", skipped=True, reason="structured_layer2", layer2_chars=len(layer2))
-    elif ask_request.use_rag and route in ("rag", "rag_only", "structured_data"):
+    elif scoped_request.use_rag and route in ("rag", "rag_only", "structured_data"):
         if progress_cb:
             await progress_cb("searching")
-        query_vec = await embeddings_client.embed_text(question)
+        retrieval_query = expand_retrieval_query(question, prior_turns)
+        query_vec = await embeddings_client.embed_text(retrieval_query)
         top_chunks = await retrieve_top_k(
             conn,
             query_vec,
-            ask_request.top_k,
-            doc_id=ask_request.doc_id,
-            doc_ids=ask_request.doc_ids,
-            tag=ask_request.tag,
-            question=question,
+            scoped_request.top_k,
+            doc_id=scoped_request.doc_id,
+            doc_ids=scoped_request.doc_ids,
+            tag=scoped_request.tag,
+            question=retrieval_query,
         )
         log_ask_event("retrieval_gate", chunks=len(top_chunks), layer2_chars=len(layer2))
 
+    related_documents = detect_related_documents(conn, scoped_request, top_chunks, question)
+
     if _need_more_context(top_chunks, layer2) and route != "structured_data":
-        return "", [], route, False, None
+        return [], [], route, False, None, related_documents
 
     if progress_cb:
         await progress_cb("generating")
 
-    prompt = _build_rag_prompt(question, top_chunks, layer2, finance_block)
-    log_ask_event("build_prompt", route=route, chunks=len(top_chunks), prompt_len=len(prompt))
-    return prompt, top_chunks, route, True, None
+    messages = _build_rag_messages(question, top_chunks, layer2, finance_block, prior_turns)
+    log_ask_event(
+        "build_prompt",
+        route=route,
+        chunks=len(top_chunks),
+        prompt_len=sum(len(m.get("content") or "") for m in messages),
+    )
+    return messages, top_chunks, route, True, None, related_documents

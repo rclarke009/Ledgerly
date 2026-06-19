@@ -22,6 +22,7 @@ class AskJob:
     doc_id: str | None = None
     tag: str | None = None
     use_rag: bool = True
+    conversation_id: str | None = None
     status: AskJobStatus = AskJobStatus.PENDING
     stage: str = "queued"
     progress_pct: float = 0.0
@@ -32,4 +33,6 @@ class AskJob:
     tables: list[dict[str, Any]] = field(default_factory=list)
     charts: list[dict[str, Any]] = field(default_factory=list)
     route: str | None = None
+    turn_id: str | None = None
+    related_documents: list[dict[str, Any]] = field(default_factory=list)
     created_at: float = 0.0

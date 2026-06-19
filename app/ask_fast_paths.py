@@ -6,16 +6,17 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
-from app.config import MATURITY_DAYS_AHEAD, OBLIGATION_DAYS_AHEAD
+from app.config import MATURITY_DAYS_AHEAD, OBLIGATION_DAYS_AHEAD, IRA_DAYS_AHEAD
 from app.dashboard import build_dashboard
 from app.db import get_account, list_accounts, list_obligations, list_positions
-from app.triggers import _parse_date
+from app.triggers import evaluate_triggers, _parse_date
 
 FastPathKind = Literal[
     "maturing_soon",
     "cd_totals",
     "obligations_soon",
     "accounts_summary",
+    "next_trigger",
 ]
 
 PRESET_QUESTIONS: dict[str, FastPathKind] = {
@@ -23,6 +24,7 @@ PRESET_QUESTIONS: dict[str, FastPathKind] = {
     "how much do i have in cds?": "cd_totals",
     "what bills or obligations are due soon?": "obligations_soon",
     "summarize my accounts and holdings.": "accounts_summary",
+    "what is my next decision trigger?": "next_trigger",
 }
 
 
@@ -51,7 +53,35 @@ def try_fast_path_answer(conn: Any, question: str) -> str | None:
         return _answer_obligations_soon(conn)
     if kind == "accounts_summary":
         return _answer_accounts_summary(conn)
+    if kind == "next_trigger":
+        return _answer_next_trigger(conn)
     return None
+
+
+def _answer_next_trigger(conn: Any) -> str:
+    triggers = evaluate_triggers(conn, persist=False)
+    if not triggers:
+        days = max(MATURITY_DAYS_AHEAD, OBLIGATION_DAYS_AHEAD, IRA_DAYS_AHEAD)
+        return f"No decision triggers in the next {days} days. Status: no action required."
+    lines = ["**Next decision triggers:**", ""]
+    for tid, ttype, etype, eid, event_date, _eval, _status in triggers[:8]:
+        label = f"{ttype} ({etype})"
+        if etype == "position":
+            pos = list_positions(conn)
+            match = next((p for p in pos if p[0] == eid), None)
+            if match:
+                acc = get_account(conn, match[1])
+                inst = acc[3] if acc and acc[3] else (acc[1] if acc else "")
+                label = f"CD maturity: {match[2]} at {inst}, matures {event_date}"
+        elif etype == "obligation":
+            for row in list_obligations(conn):
+                if row[0] == eid:
+                    label = f"Obligation due: {row[1]} on {event_date}"
+                    break
+        elif etype == "ira_overview":
+            label = f"IRA awareness date: {event_date}"
+        lines.append(f"- {label}")
+    return "\n".join(lines)
 
 
 def _format_money(amount: float | None) -> str:

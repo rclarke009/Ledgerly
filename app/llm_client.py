@@ -31,8 +31,17 @@ logger = logging.getLogger(__name__)
 
 
 async def answer_with_context(prompt: str) -> str:
+    return await answer_with_messages([{"role": "user", "content": prompt}])
+
+
+async def answer_with_context_stream(prompt: str) -> AsyncIterator[str]:
+    async for delta in answer_with_messages_stream([{"role": "user", "content": prompt}]):
+        yield delta
+
+
+async def answer_with_messages(messages: list[dict[str, str]]) -> str:
     t0 = time.perf_counter()
-    text = await _chat_once(prompt, stream=False)
+    text = await _chat_messages_once(messages, stream=False)
     log_ask_event(
         "llm_completion",
         kind="chat",
@@ -42,10 +51,10 @@ async def answer_with_context(prompt: str) -> str:
     return text
 
 
-async def answer_with_context_stream(prompt: str) -> AsyncIterator[str]:
+async def answer_with_messages_stream(messages: list[dict[str, str]]) -> AsyncIterator[str]:
     t0 = time.perf_counter()
     total_chars = 0
-    async for delta in _chat_stream(prompt):
+    async for delta in _chat_messages_stream(messages):
         total_chars += len(delta)
         yield delta
     log_ask_event(
@@ -122,11 +131,11 @@ async def answer_openai(prompt: str) -> str | None:
     return None
 
 
-async def _chat_once(prompt: str, *, stream: bool) -> str:
+async def _chat_messages_once(messages: list[dict[str, str]], *, stream: bool) -> str:
     url = f"{LLM_BASE_URL.rstrip('/')}/api/chat"
     payload = {
         "model": LLM_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": messages,
         "stream": stream,
     }
     last_err: Exception | None = None
@@ -151,11 +160,11 @@ async def _chat_once(prompt: str, *, stream: bool) -> str:
     raise last_err or LLMServiceError("LLM chat failed")
 
 
-async def _chat_stream(prompt: str) -> AsyncIterator[str]:
+async def _chat_messages_stream(messages: list[dict[str, str]]) -> AsyncIterator[str]:
     url = f"{LLM_BASE_URL.rstrip('/')}/api/chat"
     payload = {
         "model": LLM_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": messages,
         "stream": True,
     }
     last_err: Exception | None = None
@@ -190,6 +199,15 @@ async def _chat_stream(prompt: str) -> AsyncIterator[str]:
             if attempt + 1 < LLM_MAX_ATTEMPTS:
                 await asyncio.sleep(0.5 * (2**attempt))
     raise last_err or LLMServiceError("LLM stream failed")
+
+
+async def _chat_once(prompt: str, *, stream: bool) -> str:
+    return await _chat_messages_once([{"role": "user", "content": prompt}], stream=stream)
+
+
+async def _chat_stream(prompt: str) -> AsyncIterator[str]:
+    async for delta in _chat_messages_stream([{"role": "user", "content": prompt}]):
+        yield delta
 
 
 def _message_content(data: dict) -> str:

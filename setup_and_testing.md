@@ -39,6 +39,8 @@ Large PDF ingests use batched calls to Ollama (`EMBED_BATCH_SIZE`, default 32) w
 
 **Portable / low-spec profile:** Set **`LEDGERLY_PROFILE=portable`** or **`LEDGERLY_PROFILE=low_spec`** in `.env` and **omit `LLAVA_MODEL`** (or leave it commented) to use the built-in smaller default (`moondream`). Run `ollama pull moondream` once. If you explicitly set `LLAVA_MODEL`, that value always wins.
 
+**Target PC (Dad's Dell XPS 15 9530):** Full specs and thermal-safe defaults are in [`docs/target-pc-dad-xps15.md`](docs/target-pc-dad-xps15.md). Copy [`.env.portable-xps15.example`](.env.portable-xps15.example) to `.env` (portable ZIP `Setup.bat` does this automatically when no `.env` exists). On Windows, **`Start.bat`** pulls `qwen2.5:3b` + `moondream` when the portable profile is set; set **`OLLAMA_NUM_THREADS=4`** explicitly for cooler operation than auto-detect (which can cap at 8 on a 20-thread CPU).
+
 **Troubleshooting only (admins):** If ingest still fails with Ollama errors about **system memory** or **VRAM**, check that Tesseract OCR is installed so PDFs can use OCR instead of vision; confirm `ollama pull` succeeded for `LLAVA_MODEL`; try a smaller vision model; optionally check `ollama ps` to see which models are loaded. Reducing concurrent heavy GPU use is a last resort, not a daily user workflow.
 
 Optional: run the LLM interactively (also pulls if needed):
@@ -188,8 +190,8 @@ Use this section **after** the app is running and you have done at least the [Qu
 
 | Track | What to prepare first |
 |-------|------------------------|
-| **Documents** | Ingest tab: paste the CD sample from [curl Ingest example](#ingest-post) below, or paste text from [`docs/sample-cd-maturity-letter.md`](docs/sample-cd-maturity-letter.md) / [`docs/sample-bill-reminder.md`](docs/sample-bill-reminder.md). |
-| **Saved data** | **Data** tab: one account, one CD position (use a maturity date **within the next 90 days** for maturing-soon tests), and one obligation due **within the next 30 days** (e.g. property tax). |
+| **Documents** | **Add document** tab: paste from [Real data pack](#real-data-pack-copy-paste) below, or use [`docs/sample-cd-maturity-letter.md`](docs/sample-cd-maturity-letter.md) / [`docs/sample-bill-reminder.md`](docs/sample-bill-reminder.md) (update dates first). |
+| **Saved data** | **Manage → Data**: accounts, positions, obligations, IRA overview — or use the tables in [Real data pack](#real-data-pack-copy-paste). |
 
 ---
 
@@ -220,8 +222,9 @@ Run these after entering data in **Data → Accounts**, **Positions**, and **Obl
 | B2 | `What's maturing in the next 3 months?` | List CDs/positions with maturity in the next 90 days; “none” if you only added far-future dates. |
 | B3 | `What bills or obligations are due soon?` | Obligations due within the configured window (default 30 days). |
 | B4 | `Summarize my accounts and holdings.` | Account names plus positions under each. |
-| B5 | `When does my biggest CD mature?` | Uses saved positions (may combine with LLM); should name the CD and date you entered. |
-| B6 | `What is my mortgage payment and when is it due?` | Only if you added an obligation whose description includes **mortgage** (e.g. “Home mortgage — First National”). |
+| B5 | `What is my next decision trigger?` | Lists maturity, obligation, and/or IRA triggers in window (preset chip). |
+| B6 | `When does my biggest CD mature?` | Uses saved positions (may combine with LLM); should name the CD and date you entered. |
+| B7 | `What is my mortgage payment and when is it due?` | Only if you added an obligation whose description includes **mortgage** (e.g. “Home mortgage — First National”). |
 
 ---
 
@@ -250,9 +253,203 @@ Prepare **both** tracks above, then try:
 
 Not Ask questions, but useful in the same “final check” session:
 
-1. **Status** → **Check status** — “No action required” vs “Actionable” per [`docs/decision-status-test-guide.md`](docs/decision-status-test-guide.md).
-2. **Documents** → **Load documents** — ingested titles appear; **Edit** tags; **Delete** removes a test doc you no longer need.
-3. **Ingest** → upload a small PDF or paste text again — success message, then document shows up in Ask’s document dropdown.
+1. **Home** — loads status automatically; **Refresh** after ingest or Data changes. With actionable data, check **What to do** and **Decision memo** (rate comparison, liquidity note).
+2. **Manage → Documents** → **Load documents** — ingested titles appear; **Edit** tags; **Delete** removes a test doc you no longer need.
+3. **Add document** → paste text from [Real data pack](#real-data-pack-copy-paste) below or upload a PDF — success message, then confirm on **Home** if prompted.
+
+---
+
+### Real data pack (copy-paste)
+
+Use this block as a **full end-to-end demo** of the CD ladder assistant: ingest the documents, enter the saved data (or confirm auto-track on Home), then paste the Ask questions.
+
+**Date note:** Sample dates below assume you are testing around **June 2026**. If your “today” is different, shift maturity/due dates so one CD matures **within 30 days**, one bill is due **within 30 days** (ideally within ±14 days of that maturity for liquidity cross-check), and one IRA row has **next relevant date within 45 days**.
+
+#### Step 1 — Ingest document 1 (CD maturity notice)
+
+**Add document** → expand **Or paste text instead** → paste everything between the lines (include the title line as `title` if you use optional fields: `PenFed CD maturity notice`):
+
+```
+---BEGIN INGEST: PenFed CD maturity notice---
+
+PenFed Credit Union
+7940 Jones Branch Drive
+McLean, VA 22102
+(800) 247-5626 | penfed.org
+
+Certificate of Deposit — Maturity Notice
+
+Member number: ****8834
+Certificate number: CD-2024-11902
+Date of letter: June 10, 2026
+
+Dear Member,
+
+Your 12-month Certificate of Deposit will mature on July 2, 2026.
+
+Account summary
+
+Account: CD Ladder – PenFed
+Principal: $25,000.00
+Annual percentage yield (APY): 4.85%
+Original term: 12 months
+Start date: July 2, 2025
+Maturity date: July 2, 2026
+Interest: Paid at maturity
+
+Your options at maturity
+
+1. Renew — Roll into a new term at the rate in effect on the maturity date.
+2. Transfer to money market — Move proceeds to PenFed Money Market Savings (compare yield vs VMFXX if you use Vanguard for cash).
+3. Withdraw — Funds available on the business day after maturity. No penalty after maturity date.
+
+If we do not hear from you by July 2, 2026, this certificate may renew automatically per your account agreement.
+
+Questions: call (800) 247-5626 or visit penfed.org.
+
+PenFed Credit Union
+Deposit Services
+
+---END INGEST---
+```
+
+After ingest: tap **Yes, track this** if Home prompts you, or add the position manually in **Manage → Data → Positions** (see Step 3).
+
+---
+
+#### Step 2 — Ingest document 2 (property tax bill)
+
+Paste as a second ingest (title: `County property tax notice`):
+
+```
+---BEGIN INGEST: County property tax notice---
+
+Anytown County Treasurer
+100 Government Way
+Anytown, ST 12345
+
+Property tax installment notice — Tax year 2026
+Notice date: June 5, 2026
+
+Parcel ID: 12-3456-789
+Property: 456 Oak Avenue, Anytown, ST 12345
+
+Amount due: $1,200.00 (first installment)
+Due date: July 5, 2026
+
+Payment must be received or postmarked by July 5, 2026 to avoid penalty and interest.
+
+Pay online at county.gov/treasurer, by mail to the address above, or in person weekdays 8:00 AM–4:30 PM.
+
+Make checks payable to Anytown County Treasurer. Write parcel ID on the memo line.
+
+---END INGEST---
+```
+
+Confirm obligation tracking on Home if prompted.
+
+---
+
+#### Step 3 — Saved data (if not auto-tracked)
+
+**Manage → Data → Accounts** — add:
+
+| Name | Type | Institution |
+|------|------|-------------|
+| CD Ladder – PenFed | Savings | PenFed |
+| Cash – Vanguard | Brokerage | Vanguard |
+
+**Manage → Data → Positions** — add (adjust if auto-track created one row):
+
+| Account | Asset type | Description | Principal | APR | Start | Maturity | Next action | Liquidity note |
+|---------|------------|-------------|-----------|-----|-------|----------|-------------|----------------|
+| CD Ladder – PenFed | CD | 12-mo rung | 25000 | 4.85 | 2025-07-02 | 2026-07-02 | Decide renew vs MMF | — |
+| Cash – Vanguard | Money market | VMFXX | 15000 | 4.50 | — | — | Hold for liquidity | Sweep / bills |
+| CD Ladder – PenFed | CD | 6-mo rung | 10000 | 4.60 | 2026-04-01 | 2026-10-01 | Wait | Next ladder rung |
+
+**Manage → Data → Obligations**:
+
+| Description | Due date | Amount |
+|-------------|----------|--------|
+| Property tax – first installment | 2026-07-05 | 1200 |
+
+**Manage → Data → IRA overview**:
+
+| Account name | Institution | Type | Balance | RMD note | Next relevant date |
+|--------------|-------------|------|---------|----------|-------------------|
+| Traditional IRA – Fidelity | Fidelity | traditional | 185000 | Review RMD estimate with CPA | 2026-07-20 |
+
+---
+
+#### Step 4 — Home checks (no typing)
+
+1. Open **Home** → **Refresh**.
+2. **Expected:** **CD ladder** table with at least two CDs; **Action needed** for July 2 maturity; **Decision memo** mentions rate comparison and liquidity (July 5 tax vs $25k maturity).
+3. **IRA awareness** line for Fidelity row if date is within 45 days.
+
+---
+
+#### Step 5 — Ask questions (copy into Ask tab)
+
+Use preset chips where they match, or paste these exactly into **Question**:
+
+**Triggers & status**
+
+```
+What is my next decision trigger?
+```
+
+```
+What's maturing in the next 3 months?
+```
+
+```
+What bills or obligations are due soon?
+```
+
+**Decision-window (CD assistant)**
+
+```
+Do I need the July 2 PenFed CD rung to stay liquid for my property tax on July 5?
+```
+
+```
+What are my options for the CD maturing July 2, 2026?
+```
+
+```
+Compare renewing to a 6-month CD versus holding cash in VMFXX after maturity.
+```
+
+```
+Is the extra yield worth the added complexity if I roll the PenFed CD?
+```
+
+```
+Summarize my accounts and holdings.
+```
+
+**Document + data combined**
+
+```
+What does my PenFed maturity notice say about automatic renewal?
+```
+
+```
+What is the APR on the CD in my maturity letter?
+```
+
+```
+Find my property tax notice and tell me the due date and amount.
+```
+
+**Limit to document (optional):** Repeat the PenFed or tax question with **Limit to document** set to that ingest title — answer should cite only that file.
+
+---
+
+#### Step 6 — Manage → Past advice
+
+After Home shows **Action needed**, open **Manage → Past advice → Load history**. You should see at least one **actionable** memo from `GET /decision` with rate/liquidity context.
 
 ---
 
@@ -261,6 +458,7 @@ Not Ask questions, but useful in the same “final check” session:
 - [ ] At least one **document** question (A1–A6) returns an answer grounded in ingested text with matching **Source chunks**.
 - [ ] At least one **saved data** question (B1–B4) returns structured totals or lists without inventing accounts you never entered.
 - [ ] One **combined** question (C1–C3) is reasonable when both docs and Data are populated.
+- [ ] **Real data pack** — Home shows ladder + actionable maturity; Ask answers **Next decision trigger** and liquidity-style question without inventing institutions.
 - [ ] **D1** does not hallucinate weather or fake holdings on an empty or irrelevant question.
 - [ ] No unexplained errors; any **Reference ID** is captured if something fails.
 

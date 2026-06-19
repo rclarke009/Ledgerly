@@ -122,6 +122,11 @@ from app.db import (
     list_documents_with_extracted_obligation,
     resolve_position,
     resolve_obligation,
+    insert_ira_overview,
+    list_ira_overview,
+    get_ira_overview,
+    update_ira_overview,
+    delete_ira_overview,
 )
 from app.models import (
     AskGeneralRequest,
@@ -166,6 +171,9 @@ from app.models import (
     ObligationCreate,
     ObligationUpdate,
     ObligationResponse,
+    IraOverviewCreate,
+    IraOverviewUpdate,
+    IraOverviewResponse,
     VaultStatusResponse,
     VaultPendingIngestRequest,
     VaultSettingsGetResponse,
@@ -186,7 +194,14 @@ from app.ingest_structured import (
     extract_structured_obligation,
     extract_structured_position,
 )
-from app.reference_data import fetch_cd_rates, RateInfo
+from app.reference_data import fetch_cd_rates_with_cache, RateInfo
+from app.decision_memo import (
+    build_action_summary_memo,
+    build_maturity_memo_sections,
+    build_no_action_memo,
+    build_openai_maturity_prompt,
+)
+from app.config import MATURITY_DAYS_AHEAD, OBLIGATION_DAYS_AHEAD
 from app.rate_limit import TokenBucket
 from app.chunking import chunk_text_chars
 from app.embeddings import HttpEmbedder
@@ -197,7 +212,7 @@ from app.ingest_worker import ingest_worker_loop
 from app.ingest_jobs import IngestJob, IngestJobKind
 from app.pdf_ingest import parse_pdf_text_mode, resolve_pdf_for_ingest
 from app.ask_graph import build_prompt_and_chunks
-from app.ask_history import fetch_ask_history, insert_complete_answer, insert_pending_for_job
+from app.ask_history import fetch_ask_history, fetch_conversation, insert_complete_answer, insert_pending_for_job
 from app.ask_queue import AskJobStore
 from app.ask_worker import ask_worker_loop
 from app.ask_jobs import AskJob
@@ -1084,6 +1099,32 @@ def _elapsed_ms(start: float) -> int:
     return int((time.perf_counter() - start) * 1000)
 
 
+def _ask_meta_payload(
+    *,
+    conversation_id: str | None = None,
+    turn_id: str | None = None,
+    related_documents: list | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    if conversation_id:
+        payload["conversation_id"] = conversation_id
+    if turn_id:
+        payload["turn_id"] = turn_id
+    if related_documents:
+        payload["related_documents"] = [
+            d.model_dump() if hasattr(d, "model_dump") else d for d in related_documents
+        ]
+    return payload
+
+
+def _ask_response_extras(turn_result, related_documents) -> dict[str, Any]:
+    return {
+        "conversation_id": turn_result.conversation_id,
+        "turn_id": turn_result.turn_id,
+        "related_documents": related_documents or [],
+    }
+
+
 @app.post("/ask", response_model=AskResponse)
 async def ask(request: Request, ask_request: AskRequest):
     """RAG over documents plus optional Layer 2 (your data) summary so user can ask about CDs, obligations, etc."""
@@ -1095,7 +1136,9 @@ async def ask(request: Request, ask_request: AskRequest):
         with app_db_connection(request.app) as conn:
             rate_limiter = request.app.state.rate_limiter
             t_build = time.perf_counter()
-            prompt, top_chunks, route, has_context, direct_answer = await build_prompt_and_chunks(conn, ask_request)
+            messages, top_chunks, route, has_context, direct_answer, related_documents = (
+                await build_prompt_and_chunks(conn, ask_request)
+            )
             build_ms = _elapsed_ms(t_build)
             logger.info(
                 "Ask: graph build done in %d ms route=%s chunks=%d",
@@ -1114,34 +1157,40 @@ async def ask(request: Request, ask_request: AskRequest):
                     total_ms=total_ms,
                 )
                 no_ctx_msg = "I don't have relevant context or data to answer that question."
-                insert_complete_answer(
+                turn_result = insert_complete_answer(
                     conn,
                     ask_request,
                     no_ctx_msg,
                     route=route,
+                    related_documents=related_documents,
+                    top_chunks=top_chunks,
                 )
                 return AskResponse(
                     answer=no_ctx_msg,
                     top_chunks=[],
                     tables=[],
                     charts=[],
+                    **_ask_response_extras(turn_result, related_documents),
                 )
 
             if direct_answer:
                 total_ms = _elapsed_ms(t0)
                 logger.info("Ask: fast path in %d ms route=%s", total_ms, route)
                 answer_msg = normalize_markdown_layout(direct_answer)
-                insert_complete_answer(
+                turn_result = insert_complete_answer(
                     conn,
                     ask_request,
                     answer_msg,
                     route=route,
+                    related_documents=related_documents,
+                    top_chunks=top_chunks,
                 )
                 return AskResponse(
                     answer=answer_msg,
                     top_chunks=top_chunks,
                     tables=[],
                     charts=[],
+                    **_ask_response_extras(turn_result, related_documents),
                 )
 
             t3 = time.perf_counter()
@@ -1151,7 +1200,7 @@ async def ask(request: Request, ask_request: AskRequest):
                 logger.info("Ask: rate limit wait %d ms", rate_limit_ms)
 
             t4 = time.perf_counter()
-            raw_answer = await llm_client.answer_with_context(prompt)
+            raw_answer = await llm_client.answer_with_messages(messages)
             body, tail = split_structured(raw_answer)
             answer, tables, charts = merge_structured_to_response(body, tail)
             answer = normalize_markdown_layout(answer)
@@ -1165,15 +1214,23 @@ async def ask(request: Request, ask_request: AskRequest):
                 rate_limit_ms,
                 llm_ms,
             )
-            insert_complete_answer(
+            turn_result = insert_complete_answer(
                 conn,
                 ask_request,
                 answer,
                 tables=[t.model_dump() for t in tables],
                 charts=[c.model_dump() for c in charts],
                 route=route,
+                related_documents=related_documents,
+                top_chunks=top_chunks,
             )
-            return AskResponse(answer=answer, top_chunks=top_chunks, tables=tables, charts=charts)
+            return AskResponse(
+                answer=answer,
+                top_chunks=top_chunks,
+                tables=tables,
+                charts=charts,
+                **_ask_response_extras(turn_result, related_documents),
+            )
 
 
 def _is_portable_profile() -> bool:
@@ -1193,6 +1250,9 @@ def _ask_job_to_response(job: AskJob) -> AskJobStatusResponse:
         top_chunks=job.top_chunks,
         tables=job.tables,
         charts=job.charts,
+        conversation_id=job.conversation_id,
+        turn_id=job.turn_id,
+        related_documents=job.related_documents,
     )
 
 
@@ -1218,18 +1278,31 @@ def _structured_payload(answer: str, tables=None, charts=None) -> dict[str, Any]
     }
 
 
-async def _stream_direct_answer(answer: str, top_chunks: list | None = None):
+async def _stream_direct_answer(
+    answer: str,
+    top_chunks: list | None = None,
+    *,
+    conversation_id: str | None = None,
+    turn_id: str | None = None,
+    related_documents: list | None = None,
+):
     msg = normalize_markdown_layout(answer)
     structured = _structured_payload(msg, [], [])
     yield json.dumps({"phase": "done"}) + "\n"
-    yield json.dumps(
-        {
-            "top_chunks": top_chunks or [],
-            "answer": msg,
-            "structured": structured,
-            "done": True,
-        }
-    ) + "\n"
+    payload: dict[str, Any] = {
+        "top_chunks": top_chunks or [],
+        "answer": msg,
+        "structured": structured,
+        "done": True,
+    }
+    payload.update(
+        _ask_meta_payload(
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            related_documents=related_documents,
+        )
+    )
+    yield json.dumps(payload) + "\n"
 
 
 async def _stream_ask_full(
@@ -1270,7 +1343,7 @@ async def _stream_ask_full(
     if build_task is not None:
         await build_task
 
-    prompt, top_chunks, route, has_context, direct_answer = build_result[0]
+    messages, top_chunks, route, has_context, direct_answer, related_documents = build_result[0]
     build_ms = _elapsed_ms(stream_start_time)
     logger.info(
         "Ask/stream: graph build done in %d ms route=%s chunks=%d",
@@ -1281,21 +1354,50 @@ async def _stream_ask_full(
 
     if not has_context:
         msg = "I don't have relevant context or data to answer that question."
-        async for line in _stream_direct_answer(msg, []):
-            yield line
         with app_db_connection(request.app) as conn:
-            insert_complete_answer(conn, ask_request, msg, route=route)
+            turn_result = insert_complete_answer(
+                conn,
+                ask_request,
+                msg,
+                route=route,
+                related_documents=related_documents,
+                top_chunks=top_chunks,
+            )
+        async for line in _stream_direct_answer(
+            msg,
+            [],
+            conversation_id=turn_result.conversation_id,
+            turn_id=turn_result.turn_id,
+            related_documents=related_documents,
+        ):
+            yield line
         return
 
-    meta = {"top_chunks": [c.model_dump() if hasattr(c, "model_dump") else c for c in top_chunks]}
+    meta = {
+        "top_chunks": [c.model_dump() if hasattr(c, "model_dump") else c for c in top_chunks],
+        **_ask_meta_payload(related_documents=related_documents),
+    }
     yield json.dumps(meta) + "\n"
 
     if direct_answer:
         answer_msg = normalize_markdown_layout(direct_answer)
-        async for line in _stream_direct_answer(direct_answer, meta["top_chunks"]):
-            yield line
         with app_db_connection(request.app) as conn:
-            insert_complete_answer(conn, ask_request, answer_msg, route=route)
+            turn_result = insert_complete_answer(
+                conn,
+                ask_request,
+                answer_msg,
+                route=route,
+                related_documents=related_documents,
+                top_chunks=top_chunks,
+            )
+        async for line in _stream_direct_answer(
+            direct_answer,
+            meta["top_chunks"],
+            conversation_id=turn_result.conversation_id,
+            turn_id=turn_result.turn_id,
+            related_documents=related_documents,
+        ):
+            yield line
         return
 
     rate_limiter = request.app.state.rate_limiter
@@ -1306,42 +1408,57 @@ async def _stream_ask_full(
     yield json.dumps({"phase": "generating"}) + "\n"
     stream_result: list[tuple[str, list, list]] = []
     async for line in _stream_ask_generator(
-        prompt,
+        messages,
         top_chunks,
         stream_start_time=stream_start_time,
         trace_ctx=trace_ctx,
         skip_meta=True,
         stream_result=stream_result,
+        related_documents=related_documents,
     ):
         yield line
     if stream_result:
         answer, tables, charts = stream_result[0]
         with app_db_connection(request.app) as conn:
-            insert_complete_answer(
+            turn_result = insert_complete_answer(
                 conn,
                 ask_request,
                 answer,
                 tables=tables,
                 charts=charts,
                 route=route,
+                related_documents=related_documents,
+                top_chunks=top_chunks,
             )
+        tail = _ask_meta_payload(
+            conversation_id=turn_result.conversation_id,
+            turn_id=turn_result.turn_id,
+            related_documents=related_documents,
+        )
+        payload: dict[str, Any] = {"done": True}
+        payload.update(tail)
+        yield json.dumps(payload) + "\n"
 
 
 async def _stream_ask_generator(
-    prompt: str,
+    messages: list[dict[str, str]],
     top_chunks: list,
     stream_start_time: float | None = None,
     trace_ctx: AskTraceContext | None = None,
     *,
     skip_meta: bool = False,
     stream_result: list[tuple[str, list, list]] | None = None,
+    related_documents: list | None = None,
 ):
     """Yield NDJSON lines: optional top_chunks, then deltas from LLM, then structured, then done."""
     t0 = stream_start_time if stream_start_time is not None else time.perf_counter()
     t_llm_start = time.perf_counter()
     logger.info("Ask/stream: generator started, LLM stream starting")
     if not skip_meta:
-        meta = {"top_chunks": [c.model_dump() if hasattr(c, "model_dump") else c for c in top_chunks]}
+        meta = {
+            "top_chunks": [c.model_dump() if hasattr(c, "model_dump") else c for c in top_chunks],
+            **_ask_meta_payload(related_documents=related_documents),
+        }
         yield json.dumps(meta) + "\n"
     first_delta = True
     accumulated = ""
@@ -1349,7 +1466,7 @@ async def _stream_ask_generator(
     try:
         if trace_ctx is not None:
             with ask_trace_scope(trace_ctx):
-                async for delta in llm_client.answer_with_context_stream(prompt):
+                async for delta in llm_client.answer_with_messages_stream(messages):
                     accumulated += delta
                     if first_delta:
                         first_delta_ms = _elapsed_ms(t_llm_start)
@@ -1357,7 +1474,7 @@ async def _stream_ask_generator(
                         first_delta = False
                     yield json.dumps({"delta": delta}) + "\n"
         else:
-            async for delta in llm_client.answer_with_context_stream(prompt):
+            async for delta in llm_client.answer_with_messages_stream(messages):
                 accumulated += delta
                 if first_delta:
                     first_delta_ms = _elapsed_ms(t_llm_start)
@@ -1431,7 +1548,7 @@ async def _stream_ask_generator(
         "charts": [c.model_dump() for c in charts],
     }
     yield json.dumps({"structured": structured}) + "\n"
-    yield json.dumps({"done": True}) + "\n"
+    # Final done line with conversation metadata is emitted by _stream_ask_full after history insert.
 
 
 @app.post("/ask/stream")
@@ -1467,6 +1584,7 @@ async def ask_jobs_enqueue(request: Request, ask_request: AskRequest):
         doc_id=ask_request.doc_id,
         tag=ask_request.tag,
         use_rag=ask_request.use_rag,
+        conversation_id=ask_request.conversation_id,
         eta_seconds=ASK_QUEUE_ESTIMATED_WAIT_SEC,
         created_at=_time.time(),
     )
@@ -1475,7 +1593,9 @@ async def ask_jobs_enqueue(request: Request, ask_request: AskRequest):
     job.eta_seconds = est
     await store.add(job)
     with app_db_connection(request.app) as conn:
-        insert_pending_for_job(conn, job.id, ask_request, asked_at=job.created_at)
+        turn_result = insert_pending_for_job(conn, job.id, ask_request, asked_at=job.created_at)
+        job.conversation_id = turn_result.conversation_id
+        job.turn_id = turn_result.turn_id
     return AskJobEnqueueResponse(job_id=job.id, estimated_wait_sec=est)
 
 
@@ -1484,6 +1604,16 @@ def get_ask_history(request: Request, limit: int = 50):
     """List recent Ask Ledgerly questions and answers."""
     with app_db_connection(request.app) as conn:
         return fetch_ask_history(conn, limit=limit)
+
+
+@app.get("/ask/conversations/{conversation_id}", response_model=list[AskHistoryItem])
+def get_ask_conversation(request: Request, conversation_id: str):
+    """Load all turns in an Ask conversation thread."""
+    with app_db_connection(request.app) as conn:
+        turns = fetch_conversation(conn, conversation_id)
+        if not turns:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        return turns
 
 
 @app.get("/ask/jobs/{job_id}", response_model=AskJobStatusResponse)
@@ -2042,18 +2172,41 @@ def reveal_document_source(request: Request, doc_id: str):
     return Response(status_code=204)
 
 
-@app.get("/documents/{doc_id}/original")
-def serve_document_original(request: Request, doc_id: str):
-    """Stream the original file (localhost or ALLOW_LOCAL_FILE_REVEAL only)."""
+def _resolve_document_original_for_reveal(request: Request, doc_id: str) -> Path:
+    """Resolve original path after localhost / ALLOW_LOCAL_FILE_REVEAL check."""
     if not _request_may_reveal_local_files(request):
         raise HTTPException(
             status_code=403,
             detail="Local file reveal is only allowed from localhost or when ALLOW_LOCAL_FILE_REVEAL=true",
         )
     with app_db_connection(request.app) as conn:
-        p = _resolve_document_original_file_path(conn, doc_id)
-    mime_guess, _ = mimetypes.guess_type(p.name)
-    media_type = mime_guess or "application/octet-stream"
+        return _resolve_document_original_file_path(conn, doc_id)
+
+
+def _document_original_media_type(path: Path) -> str:
+    mime_guess, _ = mimetypes.guess_type(path.name)
+    return mime_guess or "application/octet-stream"
+
+
+@app.head("/documents/{doc_id}/original")
+def head_document_original(request: Request, doc_id: str):
+    """Existence check for Preview prefetch (GET also works; HEAD is not auto-registered)."""
+    p = _resolve_document_original_for_reveal(request, doc_id)
+    media_type = _document_original_media_type(p)
+    return Response(
+        status_code=200,
+        headers={
+            "Content-Type": media_type,
+            "Content-Length": str(p.stat().st_size),
+        },
+    )
+
+
+@app.get("/documents/{doc_id}/original")
+def serve_document_original(request: Request, doc_id: str):
+    """Stream the original file (localhost or ALLOW_LOCAL_FILE_REVEAL only)."""
+    p = _resolve_document_original_for_reveal(request, doc_id)
+    media_type = _document_original_media_type(p)
     return FileResponse(path=str(p.resolve()), filename=p.name, media_type=media_type)
 
 
@@ -2123,6 +2276,39 @@ def _build_data_summary(conn: Any, max_chars: int = 2000) -> str:
     return s[:max_chars] + ("..." if len(s) > max_chars else "")
 
 
+def _position_row_to_response(row: tuple) -> PositionResponse:
+    return PositionResponse(
+        id=row[0],
+        account_id=row[1],
+        asset_type=row[2],
+        description=row[3],
+        principal=row[4],
+        rate_apr=row[5],
+        maturity_date=row[6],
+        document_id=row[7],
+        created_at=row[8],
+        updated_at=row[9],
+        start_date=row[10] if len(row) > 10 else None,
+        next_action=row[11] if len(row) > 11 else None,
+        liquidity_note=row[12] if len(row) > 12 else None,
+    )
+
+
+def _ira_row_to_response(row: tuple) -> IraOverviewResponse:
+    return IraOverviewResponse(
+        id=row[0],
+        account_name=row[1],
+        institution=row[2],
+        account_type=row[3],
+        balance_estimate=row[4],
+        rmd_note=row[5],
+        next_relevant_date=row[6],
+        document_id=row[7],
+        created_at=row[8],
+        updated_at=row[9],
+    )
+
+
 def _build_decision_sources(conn: Any, trigger_rows: list[tuple]) -> list[UserDataSource | WebSource]:
     """Build sources list: user data refs for entities in triggers, plus optional web refs added by caller."""
     sources: list[UserDataSource | WebSource] = []
@@ -2152,6 +2338,16 @@ def _build_decision_sources(conn: Any, trigger_rows: list[tuple]) -> list[UserDa
                 _, description, due_date, amount_estimate, priority, doc_id, _ = obl
                 label = f"Obligation: {description}, due {due_date}"
                 sources.append(UserDataSource(entity_type="obligation", id=entity_id, label=label))
+        elif entity_type == "ira_overview":
+            ira = get_ira_overview(conn, entity_id)
+            if ira:
+                _, account_name, institution, account_type, _bal, _rmd, next_date, _doc, _, _ = ira
+                label = f"IRA: {account_name}"
+                if institution:
+                    label += f" ({institution})"
+                if next_date:
+                    label += f", relevant date {next_date}"
+                sources.append(UserDataSource(entity_type="ira_overview", id=entity_id, label=label))
     return sources
 
 
@@ -2180,11 +2376,15 @@ async def get_decision(request: Request):
             for r in triggers
         ]
         sources = _build_decision_sources(conn, triggers)
-        # Add web source for rate context when we have maturity triggers
+        rate_infos: list[RateInfo] = []
+        rate_comparisons: list[str] = []
+        liquidity_notes: list[str] = []
+        memo_sections: list[dict[str, Any]] = []
+
         if any(t[1] == "maturity" for t in triggers):
             try:
-                rate_infos = await fetch_cd_rates()
-                for ri in rate_infos[:2]:
+                rate_infos = await fetch_cd_rates_with_cache(conn)
+                for ri in rate_infos[:4]:
                     sources.append(
                         WebSource(
                             quote=ri.quote,
@@ -2195,41 +2395,42 @@ async def get_decision(request: Request):
             except Exception as e:
                 logger.warning("Reference data fetch failed: %s", e)
 
-        # OpenAI path: sanitized CD advice per maturity trigger (no PII in prompt)
         maturity_count = sum(1 for t in triggers if t[1] == "maturity" and t[2] == "position")
-        logger.info("Decision: requesting OpenAI advice for %d maturity trigger(s)", maturity_count)
+        logger.info("Decision: building memos for %d maturity trigger(s)", maturity_count)
         openai_advice: list[str] = []
         for t in triggers:
             if t[1] != "maturity" or t[2] != "position":
                 continue
-            pos = get_position(conn, t[3])
-            if not pos:
+            section = build_maturity_memo_sections(conn, t[3], t[4], rate_infos)
+            if not section:
                 continue
-            _, _acc_id, asset_type, _desc, principal, rate_apr, maturity_date, *_ = pos
-            principal_str = f"${principal:,.0f}" if principal is not None else "an amount"
-            rate_str = f"{rate_apr}%" if rate_apr is not None else "unknown rate"
-            prompt = (
-                f"What should someone do if they have {principal_str} in a CD maturing now? "
-                f"Current rate was {rate_str}. "
-                "Give exactly 2-3 short options, one per line, starting each line with '1.', '2.', etc. "
-                "No intro paragraph. Max ~20 words per option."
-            )
+            memo_sections.append(section)
+            if section.get("rate_comparison", {}).get("summary"):
+                rate_comparisons.append(section["rate_comparison"]["summary"])
+            liq = section.get("liquidity") or {}
+            if liq.get("summary"):
+                liquidity_notes.append(liq["summary"])
             try:
-                advice = await llm_client.answer_openai(prompt)
+                advice = await llm_client.answer_openai(build_openai_maturity_prompt(section))
                 if advice:
                     for chunk in split_advice_bullets(advice):
                         openai_advice.append(chunk)
             except Exception as e:
                 logger.warning("OpenAI advice for maturity trigger failed: %s", e)
+                openai_advice.append(f"Recommendation: {section.get('recommendation', 'Review options')}")
+                conf = section.get("confidence") or {}
+                openai_advice.append(
+                    f"Confidence: {conf.get('status', 'provisional')}; "
+                    f"missing: {', '.join(conf.get('missing') or []) or 'none'}"
+                )
 
         if not triggers:
             status = "no_action_required"
-            memo = "No action required. No CDs maturing soon and no obligations due in the next 30 days."
-            # Include what we considered (positions/obligations) as sources
+            memo = build_no_action_memo(conn)
             positions = list_positions(conn)
             obligations = list_obligations(conn)
             for row in positions[:10]:
-                pos_id, account_id, asset_type, desc, principal, rate_apr, maturity_date, doc_id, _, _ = row
+                pos_id, account_id, asset_type, desc, principal, rate_apr, maturity_date, doc_id, _, _ = row[:10]
                 acc = get_account(conn, account_id)
                 acc_name = acc[1] if acc else account_id
                 label = f"Position: {asset_type}" + (f" {desc}" if desc else "") + (f", matures {maturity_date}" if maturity_date else "") + f" ({acc_name})"
@@ -2239,20 +2440,31 @@ async def get_decision(request: Request):
                 sources.append(UserDataSource(entity_type="obligation", id=obl_id, label=f"Obligation: {description}, due {due_date}"))
         else:
             status = "actionable"
-            memo = f"You have {len(triggers)} item(s) needing attention: " + "; ".join(
-                f"{t[1]} ({t[2]} {t[3]})" for t in triggers[:5]
-            ) + ". Review maturity and obligation dates; consider renewing or reallocating."
+            memo = build_action_summary_memo(len(triggers), memo_sections)
+            if not memo_sections:
+                days_label = max(MATURITY_DAYS_AHEAD, OBLIGATION_DAYS_AHEAD)
+                memo = (
+                    f"You have {len(triggers)} item(s) needing attention in the next {days_label} days. "
+                    "Review maturity, obligation, and IRA awareness dates."
+                )
         history_id = str(uuid.uuid4())
         trigger_ids_str = json.dumps([r[0] for r in triggers])
         insert_decision_history(conn, history_id, now_ts, status, memo, trigger_ids_str)
         conn.commit()
-        logger.info("Decision: done status=%s openai_advice_count=%d", status, len(openai_advice))
+        logger.info(
+            "Decision: done status=%s advice_count=%d rate_comparisons=%d",
+            status,
+            len(openai_advice),
+            len(rate_comparisons),
+        )
         return DecisionResponse(
             status=status,
             triggers=trigger_list,
             memo=memo,
             sources=sources,
             openai_advice=openai_advice,
+            rate_comparisons=rate_comparisons,
+            liquidity_notes=liquidity_notes,
         )
 
 
@@ -2431,10 +2643,7 @@ def delete_account_route(request: Request, account_id: str):
 def list_positions_route(request: Request, account_id: str | None = None):
     with app_db_connection(request.app) as conn:
         rows = list_positions(conn, account_id)
-        return [
-            PositionResponse(id=r[0], account_id=r[1], asset_type=r[2], description=r[3], principal=r[4], rate_apr=r[5], maturity_date=r[6], document_id=r[7], created_at=r[8], updated_at=r[9])
-            for r in rows
-        ]
+        return [_position_row_to_response(r) for r in rows]
 
 
 @app.post("/positions", response_model=PositionResponse)
@@ -2445,9 +2654,38 @@ def create_position(request: Request, body: PositionCreate):
     with app_db_connection(request.app) as conn:
         if not get_account(conn, body.account_id):
             raise HTTPException(status_code=400, detail="Account not found")
-        insert_position(conn, pos_id, body.account_id, body.asset_type, now, now, body.description, body.principal, body.rate_apr, body.maturity_date, body.document_id)
+        insert_position(
+            conn,
+            pos_id,
+            body.account_id,
+            body.asset_type,
+            now,
+            now,
+            body.description,
+            body.principal,
+            body.rate_apr,
+            body.maturity_date,
+            body.document_id,
+            body.start_date,
+            body.next_action,
+            body.liquidity_note,
+        )
         conn.commit()
-    return PositionResponse(id=pos_id, account_id=body.account_id, asset_type=body.asset_type, description=body.description, principal=body.principal, rate_apr=body.rate_apr, maturity_date=body.maturity_date, document_id=body.document_id, created_at=now, updated_at=now)
+    return PositionResponse(
+        id=pos_id,
+        account_id=body.account_id,
+        asset_type=body.asset_type,
+        description=body.description,
+        principal=body.principal,
+        rate_apr=body.rate_apr,
+        maturity_date=body.maturity_date,
+        document_id=body.document_id,
+        start_date=body.start_date,
+        next_action=body.next_action,
+        liquidity_note=body.liquidity_note,
+        created_at=now,
+        updated_at=now,
+    )
 
 
 @app.get("/positions/{position_id}", response_model=PositionResponse)
@@ -2456,7 +2694,7 @@ def get_position_route(request: Request, position_id: str):
         row = get_position(conn, position_id)
         if not row:
             raise HTTPException(status_code=404, detail="Position not found")
-        return PositionResponse(id=row[0], account_id=row[1], asset_type=row[2], description=row[3], principal=row[4], rate_apr=row[5], maturity_date=row[6], document_id=row[7], created_at=row[8], updated_at=row[9])
+        return _position_row_to_response(row)
 
 
 @app.patch("/positions/{position_id}", response_model=PositionResponse)
@@ -2466,10 +2704,22 @@ def patch_position(request: Request, position_id: str, body: PositionUpdate):
         row = get_position(conn, position_id)
         if not row:
             raise HTTPException(status_code=404, detail="Position not found")
-        update_position(conn, position_id, now, body.description, body.principal, body.rate_apr, body.maturity_date, body.document_id)
+        update_position(
+            conn,
+            position_id,
+            now,
+            body.description,
+            body.principal,
+            body.rate_apr,
+            body.maturity_date,
+            body.document_id,
+            body.start_date,
+            body.next_action,
+            body.liquidity_note,
+        )
         conn.commit()
         row = get_position(conn, position_id)
-        return PositionResponse(id=row[0], account_id=row[1], asset_type=row[2], description=row[3], principal=row[4], rate_apr=row[5], maturity_date=row[6], document_id=row[7], created_at=row[8], updated_at=row[9])
+        return _position_row_to_response(row)
 
 
 @app.delete("/positions/{position_id}", status_code=204)
@@ -2530,6 +2780,89 @@ def delete_obligation_route(request: Request, obligation_id: str):
         if not get_obligation(conn, obligation_id):
             raise HTTPException(status_code=404, detail="Obligation not found")
         delete_obligation(conn, obligation_id)
+        conn.commit()
+    return None
+
+
+@app.get("/ira-overview", response_model=list[IraOverviewResponse])
+def list_ira_overview_route(request: Request):
+    with app_db_connection(request.app) as conn:
+        return [_ira_row_to_response(r) for r in list_ira_overview(conn)]
+
+
+@app.post("/ira-overview", response_model=IraOverviewResponse)
+def create_ira_overview_route(request: Request, body: IraOverviewCreate):
+    import uuid
+    ira_id = str(uuid.uuid4())
+    now = int(time.time())
+    with app_db_connection(request.app) as conn:
+        insert_ira_overview(
+            conn,
+            ira_id,
+            body.account_name,
+            now,
+            now,
+            body.institution,
+            body.account_type,
+            body.balance_estimate,
+            body.rmd_note,
+            body.next_relevant_date,
+            body.document_id,
+        )
+        conn.commit()
+    return IraOverviewResponse(
+        id=ira_id,
+        account_name=body.account_name,
+        institution=body.institution,
+        account_type=body.account_type,
+        balance_estimate=body.balance_estimate,
+        rmd_note=body.rmd_note,
+        next_relevant_date=body.next_relevant_date,
+        document_id=body.document_id,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+@app.get("/ira-overview/{ira_id}", response_model=IraOverviewResponse)
+def get_ira_overview_route(request: Request, ira_id: str):
+    with app_db_connection(request.app) as conn:
+        row = get_ira_overview(conn, ira_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="IRA overview not found")
+        return _ira_row_to_response(row)
+
+
+@app.patch("/ira-overview/{ira_id}", response_model=IraOverviewResponse)
+def patch_ira_overview_route(request: Request, ira_id: str, body: IraOverviewUpdate):
+    now = int(time.time())
+    with app_db_connection(request.app) as conn:
+        row = get_ira_overview(conn, ira_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="IRA overview not found")
+        update_ira_overview(
+            conn,
+            ira_id,
+            now,
+            body.account_name,
+            body.institution,
+            body.account_type,
+            body.balance_estimate,
+            body.rmd_note,
+            body.next_relevant_date,
+            body.document_id,
+        )
+        conn.commit()
+        row = get_ira_overview(conn, ira_id)
+        return _ira_row_to_response(row)
+
+
+@app.delete("/ira-overview/{ira_id}", status_code=204)
+def delete_ira_overview_route(request: Request, ira_id: str):
+    with app_db_connection(request.app) as conn:
+        if not get_ira_overview(conn, ira_id):
+            raise HTTPException(status_code=404, detail="IRA overview not found")
+        delete_ira_overview(conn, ira_id)
         conn.commit()
     return None
 

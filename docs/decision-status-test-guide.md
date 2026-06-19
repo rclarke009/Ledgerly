@@ -1,101 +1,82 @@
 # Decision status test guide
 
-This guide explains how to test the **Decision status** ("Check status") feature in Ledgerly. The status is either **No action required** or **Actionable**, depending on your positions and obligations in the next 30 days.
+This guide explains how to test **Home status** and **decision memos** in Ledgerly. Status is either **No action required** or **Actionable**, based on positions, obligations, and IRA awareness dates in configured trigger windows (default: 30 days for maturities/obligations, 45 days for IRA).
 
 ## How it works
 
-- **No action required**: No CDs (or other positions) maturing in the next 30 days, and no obligations due in the next 30 days.
-- **Actionable**: At least one position maturing within 30 days and/or one obligation due within 30 days.
+- **Home** loads automatically — there is no separate Status tab.
+- **No action required**: No CD maturities, obligations, or IRA relevant dates in the trigger windows.
+- **Actionable**: At least one trigger fired. Home shows **What to do** tips and fetches `GET /decision` for a structured memo (rate comparison, liquidity cross-check, optional OpenAI bullets).
 
-Positions and obligations are entered in **Data → Accounts**, **Data → Positions**, and **Data → Obligations**. Ingested documents are used for the **Ask** tab and can be linked to these entities; they do **not** create positions or obligations automatically.
+Positions and obligations live under **Manage → Data**. Ingest can auto-track dates from documents; confirm or undo on Home.
 
-Use **relative dates** below (e.g. "14 days from today") so this guide stays valid.
+Use **relative dates** (e.g. 14 days from today) so scenarios stay valid.
 
 ---
 
 ## Scenario A — No action required
 
-1. **Data → Accounts**: Add an account (e.g. Name: "Savings – First National", Institution: "First National Bank").
-2. **Data → Positions**: Add a position under that account:
-   - Asset type: **CD**
-   - Maturity date: **more than 30 days from today** (e.g. 60 days from today in `YYYY-MM-DD` format).
-   - Optionally set Principal, Rate APR, Description.
-3. Optionally **Data → Obligations**: Add an obligation with due date **more than 30 days from today** (or skip obligations).
-4. Open the **Status** tab and click **Check status**.
-5. **Expected**: "No action required" and a memo stating no CDs maturing soon and no obligations due in the next 30 days.
+1. **Manage → Data → Accounts**: Add an account (e.g. "Savings – First National").
+2. **Manage → Data → Positions**: Add a CD with maturity **more than 30 days from today**.
+3. Open **Home** (or click Refresh).
+4. **Expected**: "All clear" / no action required memo.
 
 ---
 
-## Scenario B — Actionable (maturity)
+## Scenario B — Actionable (maturity + decision memo)
 
-1. Use the same account from Scenario A (or create one).
-2. **Data → Positions**: Add a **new** position (or edit the existing one):
-   - Asset type: **CD**
-   - Maturity date: **within the next 30 days** (e.g. 14 days from today in `YYYY-MM-DD` format).
-3. Open the **Status** tab and click **Check status**.
-4. **Expected**: "Actionable", with a maturity trigger and a memo mentioning the CD maturing soon.
+1. Add a CD with maturity **within 30 days**.
+2. Open **Home**.
+3. **Expected**: "Action needed", renewal tips, and under **Decision memo**: rate comparison vs benchmarks, liquidity note, recommendation lines.
+4. Optional: add an obligation due within ±14 days of maturity to test liquidity cross-check.
 
 ---
 
 ## Scenario C — Actionable (obligation)
 
-1. **Data → Obligations**: Add an obligation:
-   - Description: e.g. "Property tax – County" or "Test bill"
-   - Due date: **within the next 30 days** (e.g. 7 days from today in `YYYY-MM-DD` format).
-   - Optionally set Amount estimate and Priority.
-2. Open the **Status** tab and click **Check status**.
-3. **Expected**: "Actionable", with an obligation_due trigger and a memo mentioning the obligation due soon.
+1. **Manage → Data → Obligations**: Add a bill due **within 30 days**.
+2. **Expected**: Actionable status with obligation tips.
 
 ---
 
-## Optional: curl for test data
+## Scenario D — CD ladder table
 
-Replace `YOUR_ACCOUNT_ID`, dates, and (for obligations) descriptions as needed. Base URL: `http://localhost:8000`.
+1. Add several CD positions with staggered maturity dates.
+2. **Expected**: **CD ladder** table on Home with institution, type, principal, APY, start, maturity, days until, next action.
 
-**Create an account:**
+---
+
+## Scenario E — IRA awareness
+
+1. **Manage → Data → IRA overview**: Add a row with **next relevant date** within 45 days.
+2. **Expected**: IRA line on Home; actionable if date is in window. Ask preset **Next decision trigger** lists it.
+
+---
+
+## curl examples
+
+Base URL: `http://localhost:8000`.
+
+**Decision check:**
 
 ```bash
-curl -s -X POST "http://localhost:8000/accounts" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Savings – First National", "institution": "First National Bank"}'
+curl -s "http://localhost:8000/decision" | python3 -m json.tool
 ```
 
-Use the returned `id` as `YOUR_ACCOUNT_ID` below.
-
-**Create a position (maturity in 30 days → actionable):**
+**Dashboard (includes ladder_positions):**
 
 ```bash
-# Use a date 14 days from today in YYYY-MM-DD
-curl -s -X POST "http://localhost:8000/positions" \
-  -H "Content-Type: application/json" \
-  -d '{"account_id": "YOUR_ACCOUNT_ID", "asset_type": "CD", "maturity_date": "2025-03-29", "principal": 10000, "rate_apr": 4.5}'
-```
-
-**Create a position (maturity beyond 30 days → no action required):**
-
-```bash
-# Use a date 60 days from today in YYYY-MM-DD
-curl -s -X POST "http://localhost:8000/positions" \
-  -H "Content-Type: application/json" \
-  -d '{"account_id": "YOUR_ACCOUNT_ID", "asset_type": "CD", "maturity_date": "2025-05-14", "principal": 10000, "rate_apr": 4.5}'
-```
-
-**Create an obligation (due in 30 days → actionable):**
-
-```bash
-# Use a date 7 days from today in YYYY-MM-DD
-curl -s -X POST "http://localhost:8000/obligations" \
-  -H "Content-Type: application/json" \
-  -d '{"description": "Property tax – County", "due_date": "2025-03-22", "amount_estimate": 1200}'
+curl -s "http://localhost:8000/dashboard?days=365" | python3 -m json.tool
 ```
 
 ---
 
-## Using the sample documents
+## Past advice
 
-The folder also contains:
+**Manage → Past advice → Load history** shows persisted memos from prior `GET /decision` runs.
 
-- **sample-cd-maturity-letter.md** — Ingest this (paste text or convert to PDF) to test the Ask tab with a CD letter. Add a matching position with maturity within 30 days to see "Actionable" and to link the document to the position.
-- **sample-bill-reminder.md** — Ingest to test Ask with a bill. Add a matching obligation with due date within 30 days to see "Actionable" and to link the document.
+---
 
-These samples are not required for the status result but make the end-to-end flow (ingest → Data → Ask → Check status) realistic.
+## Real data pack (full walkthrough)
+
+For copy-paste ingest text, saved-data tables, and Ask questions you can paste into the UI, see **[Real data pack (copy-paste)](../setup_and_testing.md#real-data-pack-copy-paste)** in [`setup_and_testing.md`](../setup_and_testing.md).

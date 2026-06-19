@@ -49,6 +49,36 @@ def test_dashboard_upcoming_maturity(tmp_path):
     conn.close()
 
 
+def test_dashboard_ladder_positions(tmp_path):
+    conn = _conn(tmp_path)
+    now = int(time.time())
+    from datetime import datetime, timedelta, timezone
+
+    future = (datetime.now(timezone.utc) + timedelta(days=90)).strftime("%Y-%m-%d")
+    insert_account(conn, "acc1", "PenFed", now, institution="PenFed")
+    insert_position(
+        conn,
+        "pos1",
+        "acc1",
+        "CD",
+        now,
+        now,
+        "12-mo",
+        25000.0,
+        4.5,
+        future,
+        None,
+        start_date="2025-06-01",
+        next_action="renew",
+    )
+    conn.commit()
+    data = build_dashboard(conn)
+    assert len(data["ladder_positions"]) == 1
+    assert data["ladder_positions"][0]["institution"] == "PenFed"
+    assert data["ladder_positions"][0]["next_action"] == "renew"
+    conn.close()
+
+
 def test_dashboard_actionable_within_30_days(tmp_path):
     conn = _conn(tmp_path)
     now = int(time.time())

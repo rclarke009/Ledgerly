@@ -103,7 +103,7 @@ async def test_build_prompt_mortgage_payment_skips_llm(conn):
     req = AskRequest(question="What is my total mortgage payment?", top_k=3)
 
     with patch("app.llm_client.answer_with_context", new_callable=AsyncMock) as mock_llm:
-        _prompt, _chunks, route, has_context, direct = await build_prompt_and_chunks(conn, req)
+        _messages, _chunks, route, has_context, direct, _related = await build_prompt_and_chunks(conn, req)
         mock_llm.assert_not_called()
 
     assert route == "fast_path"

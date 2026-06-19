@@ -133,6 +133,29 @@ def create_db(conn: Any) -> Any:
         conn.execute("ALTER TABLE obligations ADD COLUMN resolved_at INTEGER")
     except sqlite3.OperationalError:
         pass
+    for col, typ in (
+        ("start_date", "TEXT"),
+        ("next_action", "TEXT"),
+        ("liquidity_note", "TEXT"),
+    ):
+        try:
+            conn.execute(f"ALTER TABLE positions ADD COLUMN {col} {typ}")
+        except sqlite3.OperationalError:
+            pass
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ira_overview (
+            id TEXT PRIMARY KEY,
+            account_name TEXT NOT NULL,
+            institution TEXT,
+            account_type TEXT,
+            balance_estimate REAL,
+            rmd_note TEXT,
+            next_relevant_date TEXT,
+            document_id TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+    """)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS trigger_events (
             id TEXT PRIMARY KEY,
@@ -182,10 +205,27 @@ def create_db(conn: Any) -> Any:
             charts_json TEXT,
             route TEXT,
             doc_filter TEXT,
-            error TEXT
+            error TEXT,
+            conversation_id TEXT,
+            parent_id TEXT,
+            related_docs_json TEXT,
+            top_chunks_json TEXT
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ask_history_asked_at ON ask_history(asked_at)")
+    for col, typ in (
+        ("conversation_id", "TEXT"),
+        ("parent_id", "TEXT"),
+        ("related_docs_json", "TEXT"),
+        ("top_chunks_json", "TEXT"),
+    ):
+        try:
+            conn.execute(f"ALTER TABLE ask_history ADD COLUMN {col} {typ}")
+        except sqlite3.OperationalError:
+            pass
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ask_history_conversation_id ON ask_history(conversation_id)"
+    )
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS document_tags (
@@ -627,6 +667,12 @@ def delete_account(conn: sqlite3.Connection, id: str) -> None:
     conn.execute("DELETE FROM accounts WHERE id = ?", (id,))
 
 
+_POSITION_SELECT = (
+    "id, account_id, asset_type, description, principal, rate_apr, maturity_date, "
+    "document_id, created_at, updated_at, start_date, next_action, liquidity_note"
+)
+
+
 def insert_position(
     conn: sqlite3.Connection,
     id: str,
@@ -639,6 +685,9 @@ def insert_position(
     rate_apr: float | None = None,
     maturity_date: str | None = None,
     document_id: str | None = None,
+    start_date: str | None = None,
+    next_action: str | None = None,
+    liquidity_note: str | None = None,
 ) -> None:
     if is_postgres_conn(conn):
         from app import db_postgres
@@ -655,11 +704,29 @@ def insert_position(
             rate_apr,
             maturity_date,
             document_id,
+            start_date,
+            next_action,
+            liquidity_note,
         )
     conn.execute(
-        """INSERT INTO positions(id, account_id, asset_type, description, principal, rate_apr, maturity_date, document_id, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?)""",
-        (id, account_id, asset_type, description, principal, rate_apr, maturity_date, document_id, created_at, updated_at),
+        f"""INSERT INTO positions(id, account_id, asset_type, description, principal, rate_apr,
+           maturity_date, document_id, created_at, updated_at, start_date, next_action, liquidity_note)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            id,
+            account_id,
+            asset_type,
+            description,
+            principal,
+            rate_apr,
+            maturity_date,
+            document_id,
+            created_at,
+            updated_at,
+            start_date,
+            next_action,
+            liquidity_note,
+        ),
     )
 
 
@@ -670,12 +737,12 @@ def list_positions(conn: sqlite3.Connection, account_id: str | None = None) -> l
         return db_postgres.list_positions(conn, account_id)
     if account_id:
         cursor = conn.execute(
-            "SELECT id, account_id, asset_type, description, principal, rate_apr, maturity_date, document_id, created_at, updated_at FROM positions WHERE account_id = ? AND resolved_at IS NULL ORDER BY maturity_date",
+            f"SELECT {_POSITION_SELECT} FROM positions WHERE account_id = ? AND resolved_at IS NULL ORDER BY maturity_date",
             (account_id,),
         )
     else:
         cursor = conn.execute(
-            "SELECT id, account_id, asset_type, description, principal, rate_apr, maturity_date, document_id, created_at, updated_at FROM positions WHERE resolved_at IS NULL ORDER BY maturity_date"
+            f"SELECT {_POSITION_SELECT} FROM positions WHERE resolved_at IS NULL ORDER BY maturity_date"
         )
     return cursor.fetchall()
 
@@ -686,7 +753,7 @@ def get_position(conn: sqlite3.Connection, id: str) -> tuple | None:
 
         return db_postgres.get_position(conn, id)
     cursor = conn.execute(
-        "SELECT id, account_id, asset_type, description, principal, rate_apr, maturity_date, document_id, created_at, updated_at FROM positions WHERE id = ?",
+        f"SELECT {_POSITION_SELECT} FROM positions WHERE id = ?",
         (id,),
     )
     return cursor.fetchone()
@@ -701,6 +768,9 @@ def update_position(
     rate_apr: float | None = None,
     maturity_date: str | None = None,
     document_id: str | None = None,
+    start_date: str | None = None,
+    next_action: str | None = None,
+    liquidity_note: str | None = None,
 ) -> None:
     if is_postgres_conn(conn):
         from app import db_postgres
@@ -714,6 +784,9 @@ def update_position(
             rate_apr,
             maturity_date,
             document_id,
+            start_date,
+            next_action,
+            liquidity_note,
         )
     updates = ["updated_at = ?"]
     params = [updated_at]
@@ -732,6 +805,15 @@ def update_position(
     if document_id is not None:
         updates.append("document_id = ?")
         params.append(document_id)
+    if start_date is not None:
+        updates.append("start_date = ?")
+        params.append(start_date)
+    if next_action is not None:
+        updates.append("next_action = ?")
+        params.append(next_action)
+    if liquidity_note is not None:
+        updates.append("liquidity_note = ?")
+        params.append(liquidity_note)
     params.append(id)
     conn.execute(f"UPDATE positions SET {', '.join(updates)} WHERE id = ?", params)
 
@@ -750,7 +832,7 @@ def get_positions_by_document_id(conn: sqlite3.Connection, doc_id: str) -> list[
 
         return db_postgres.get_positions_by_document_id(conn, doc_id)
     cursor = conn.execute(
-        "SELECT id, account_id, asset_type, description, principal, rate_apr, maturity_date, document_id, created_at, updated_at FROM positions WHERE document_id = ? ORDER BY maturity_date",
+        f"SELECT {_POSITION_SELECT} FROM positions WHERE document_id = ? ORDER BY maturity_date",
         (doc_id,),
     )
     return cursor.fetchall()
@@ -1074,17 +1156,29 @@ def insert_ask_history_pending(
     asked_at: int,
     question: str,
     doc_filter: str | None = None,
+    conversation_id: str | None = None,
+    parent_id: str | None = None,
 ) -> None:
     if is_postgres_conn(conn):
         from app import db_postgres
 
         return db_postgres.insert_ask_history_pending(
-            conn, id, job_id, asked_at, question, doc_filter
+            conn,
+            id,
+            job_id,
+            asked_at,
+            question,
+            doc_filter,
+            conversation_id=conversation_id,
+            parent_id=parent_id,
         )
+    conv_id = conversation_id or id
     conn.execute(
-        """INSERT INTO ask_history(id, job_id, asked_at, status, question, doc_filter)
-           VALUES (?,?,?,?,?,?)""",
-        (id, job_id, asked_at, "pending", question, doc_filter),
+        """INSERT INTO ask_history(
+               id, job_id, asked_at, status, question, doc_filter,
+               conversation_id, parent_id
+           ) VALUES (?,?,?,?,?,?,?,?)""",
+        (id, job_id, asked_at, "pending", question, doc_filter, conv_id, parent_id),
     )
     _prune_ask_history(conn)
 
@@ -1099,6 +1193,10 @@ def insert_ask_history_complete(
     charts_json: str | None = None,
     route: str | None = None,
     doc_filter: str | None = None,
+    conversation_id: str | None = None,
+    parent_id: str | None = None,
+    related_docs_json: str | None = None,
+    top_chunks_json: str | None = None,
 ) -> None:
     if is_postgres_conn(conn):
         from app import db_postgres
@@ -1113,12 +1211,18 @@ def insert_ask_history_complete(
             charts_json,
             route,
             doc_filter,
+            conversation_id=conversation_id,
+            parent_id=parent_id,
+            related_docs_json=related_docs_json,
+            top_chunks_json=top_chunks_json,
         )
+    conv_id = conversation_id or id
     conn.execute(
         """INSERT INTO ask_history(
                id, job_id, asked_at, status, question, answer,
-               tables_json, charts_json, route, doc_filter
-           ) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+               tables_json, charts_json, route, doc_filter,
+               conversation_id, parent_id, related_docs_json, top_chunks_json
+           ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             id,
             None,
@@ -1130,6 +1234,10 @@ def insert_ask_history_complete(
             charts_json,
             route,
             doc_filter,
+            conv_id,
+            parent_id,
+            related_docs_json,
+            top_chunks_json,
         ),
     )
     _prune_ask_history(conn)
@@ -1145,6 +1253,8 @@ def update_ask_history_result(
     charts_json: str | None = None,
     route: str | None = None,
     error: str | None = None,
+    related_docs_json: str | None = None,
+    top_chunks_json: str | None = None,
 ) -> None:
     if is_postgres_conn(conn):
         from app import db_postgres
@@ -1158,11 +1268,23 @@ def update_ask_history_result(
             charts_json=charts_json,
             route=route,
             error=error,
+            related_docs_json=related_docs_json,
+            top_chunks_json=top_chunks_json,
         )
     conn.execute(
         """UPDATE ask_history SET status=?, answer=?, tables_json=?, charts_json=?,
-           route=?, error=? WHERE job_id=?""",
-        (status, answer, tables_json, charts_json, route, error, job_id),
+           route=?, error=?, related_docs_json=?, top_chunks_json=? WHERE job_id=?""",
+        (
+            status,
+            answer,
+            tables_json,
+            charts_json,
+            route,
+            error,
+            related_docs_json,
+            top_chunks_json,
+            job_id,
+        ),
     )
 
 
@@ -1176,9 +1298,71 @@ def list_ask_history(
         return db_postgres.list_ask_history(conn, limit=limit)
     cursor = conn.execute(
         """SELECT id, job_id, asked_at, status, question, answer,
-                  tables_json, charts_json, route, doc_filter, error
+                  tables_json, charts_json, route, doc_filter, error,
+                  conversation_id, parent_id, related_docs_json, top_chunks_json
            FROM ask_history ORDER BY asked_at DESC LIMIT ?""",
         (limit,),
+    )
+    return cursor.fetchall()
+
+
+def get_document_title(conn: sqlite3.Connection, doc_id: str) -> str | None:
+    if is_postgres_conn(conn):
+        from app import db_postgres
+
+        return db_postgres.get_document_title(conn, doc_id)
+    row = conn.execute(
+        "SELECT title FROM documents WHERE doc_id = ?", (doc_id,)
+    ).fetchone()
+    return row[0] if row else None
+
+
+def get_conversation_doc_filter(conn: sqlite3.Connection, conversation_id: str) -> str | None:
+    if is_postgres_conn(conn):
+        from app import db_postgres
+
+        return db_postgres.get_conversation_doc_filter(conn, conversation_id)
+    row = conn.execute(
+        """SELECT doc_filter FROM ask_history
+           WHERE conversation_id = ? AND parent_id IS NULL
+           ORDER BY asked_at ASC LIMIT 1""",
+        (conversation_id,),
+    ).fetchone()
+    return row[0] if row else None
+
+
+def get_conversation_last_turn_id(conn: sqlite3.Connection, conversation_id: str) -> str | None:
+    if is_postgres_conn(conn):
+        from app import db_postgres
+
+        return db_postgres.get_conversation_last_turn_id(conn, conversation_id)
+    row = conn.execute(
+        """SELECT id FROM ask_history
+           WHERE conversation_id = ? AND status = 'complete'
+           ORDER BY asked_at DESC LIMIT 1""",
+        (conversation_id,),
+    ).fetchone()
+    return row[0] if row else None
+
+
+def list_conversation_turns(
+    conn: sqlite3.Connection,
+    conversation_id: str,
+    limit: int = 50,
+) -> list[tuple]:
+    if is_postgres_conn(conn):
+        from app import db_postgres
+
+        return db_postgres.list_conversation_turns(conn, conversation_id, limit=limit)
+    cursor = conn.execute(
+        """SELECT id, job_id, asked_at, status, question, answer,
+                  tables_json, charts_json, route, doc_filter, error,
+                  conversation_id, parent_id, related_docs_json, top_chunks_json
+           FROM ask_history
+           WHERE conversation_id = ?
+           ORDER BY asked_at ASC
+           LIMIT ?""",
+        (conversation_id, limit),
     )
     return cursor.fetchall()
 
@@ -1188,12 +1372,163 @@ def _prune_ask_history(conn: sqlite3.Connection) -> None:
         from app import db_postgres
 
         return db_postgres.prune_ask_history(conn)
+    rows = conn.execute(
+        """SELECT COALESCE(conversation_id, id) AS conv_id, COUNT(*) AS cnt
+           FROM ask_history
+           GROUP BY conv_id
+           ORDER BY MAX(asked_at) DESC"""
+    ).fetchall()
+    keep_conv_ids: list[str] = []
+    total = 0
+    for conv_id, cnt in rows:
+        if total + cnt > ASK_HISTORY_RETENTION_LIMIT and keep_conv_ids:
+            break
+        keep_conv_ids.append(conv_id)
+        total += cnt
+    if not keep_conv_ids:
+        return
+    placeholders = ",".join("?" * len(keep_conv_ids))
     conn.execute(
-        """DELETE FROM ask_history WHERE id NOT IN (
-               SELECT id FROM ask_history ORDER BY asked_at DESC LIMIT ?
-           )""",
-        (ASK_HISTORY_RETENTION_LIMIT,),
+        f"""DELETE FROM ask_history
+            WHERE COALESCE(conversation_id, id) NOT IN ({placeholders})""",
+        keep_conv_ids,
     )
+
+
+def insert_ira_overview(
+    conn: sqlite3.Connection,
+    id: str,
+    account_name: str,
+    created_at: int,
+    updated_at: int,
+    institution: str | None = None,
+    account_type: str | None = None,
+    balance_estimate: float | None = None,
+    rmd_note: str | None = None,
+    next_relevant_date: str | None = None,
+    document_id: str | None = None,
+) -> None:
+    if is_postgres_conn(conn):
+        from app import db_postgres
+
+        return db_postgres.insert_ira_overview(
+            conn,
+            id,
+            account_name,
+            created_at,
+            updated_at,
+            institution,
+            account_type,
+            balance_estimate,
+            rmd_note,
+            next_relevant_date,
+            document_id,
+        )
+    conn.execute(
+        """INSERT INTO ira_overview(id, account_name, institution, account_type, balance_estimate,
+           rmd_note, next_relevant_date, document_id, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (
+            id,
+            account_name,
+            institution,
+            account_type,
+            balance_estimate,
+            rmd_note,
+            next_relevant_date,
+            document_id,
+            created_at,
+            updated_at,
+        ),
+    )
+
+
+def list_ira_overview(conn: sqlite3.Connection) -> list[tuple]:
+    if is_postgres_conn(conn):
+        from app import db_postgres
+
+        return db_postgres.list_ira_overview(conn)
+    cursor = conn.execute(
+        """SELECT id, account_name, institution, account_type, balance_estimate, rmd_note,
+           next_relevant_date, document_id, created_at, updated_at
+           FROM ira_overview ORDER BY next_relevant_date, account_name"""
+    )
+    return cursor.fetchall()
+
+
+def get_ira_overview(conn: sqlite3.Connection, id: str) -> tuple | None:
+    if is_postgres_conn(conn):
+        from app import db_postgres
+
+        return db_postgres.get_ira_overview(conn, id)
+    cursor = conn.execute(
+        """SELECT id, account_name, institution, account_type, balance_estimate, rmd_note,
+           next_relevant_date, document_id, created_at, updated_at FROM ira_overview WHERE id = ?""",
+        (id,),
+    )
+    return cursor.fetchone()
+
+
+def update_ira_overview(
+    conn: sqlite3.Connection,
+    id: str,
+    updated_at: int,
+    account_name: str | None = None,
+    institution: str | None = None,
+    account_type: str | None = None,
+    balance_estimate: float | None = None,
+    rmd_note: str | None = None,
+    next_relevant_date: str | None = None,
+    document_id: str | None = None,
+) -> None:
+    if is_postgres_conn(conn):
+        from app import db_postgres
+
+        return db_postgres.update_ira_overview(
+            conn,
+            id,
+            updated_at,
+            account_name,
+            institution,
+            account_type,
+            balance_estimate,
+            rmd_note,
+            next_relevant_date,
+            document_id,
+        )
+    updates = ["updated_at = ?"]
+    params: list[Any] = [updated_at]
+    if account_name is not None:
+        updates.append("account_name = ?")
+        params.append(account_name)
+    if institution is not None:
+        updates.append("institution = ?")
+        params.append(institution)
+    if account_type is not None:
+        updates.append("account_type = ?")
+        params.append(account_type)
+    if balance_estimate is not None:
+        updates.append("balance_estimate = ?")
+        params.append(balance_estimate)
+    if rmd_note is not None:
+        updates.append("rmd_note = ?")
+        params.append(rmd_note)
+    if next_relevant_date is not None:
+        updates.append("next_relevant_date = ?")
+        params.append(next_relevant_date)
+    if document_id is not None:
+        updates.append("document_id = ?")
+        params.append(document_id)
+    params.append(id)
+    conn.execute(f"UPDATE ira_overview SET {', '.join(updates)} WHERE id = ?", params)
+
+
+def delete_ira_overview(conn: sqlite3.Connection, id: str) -> None:
+    if is_postgres_conn(conn):
+        from app import db_postgres
+
+        return db_postgres.delete_ira_overview(conn, id)
+    conn.execute("DELETE FROM ira_overview WHERE id = ?", (id,))
 
 
 def insert_rate_snapshot(

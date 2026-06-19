@@ -42,6 +42,12 @@ To stop: open a terminal in `%LocalAppData%\Ledgerly` and run `docker compose do
 
 The Docker stack includes **internal Postgres + pgvector** (no DB port exposed on the PC — only the Ledgerly container talks to it). Your dad does not need Supabase CLI or a separate database install.
 
+### Target PC (Dad's Dell XPS 15 9530)
+
+Hardware and cool/quiet **`.env`** defaults: [`docs/target-pc-dad-xps15.md`](../docs/target-pc-dad-xps15.md).
+
+The portable ZIP includes **`.env.portable-xps15.example`**. **`Setup.bat`** copies it to **`.env`** on first install (when no `.env` exists yet). **`Start.bat`** auto-detects **`OLLAMA_NUM_THREADS`** when unset (same conservative formula as `start.sh`) and pulls **`qwen2.5:3b`** + **`moondream`** when **`LEDGERLY_PROFILE=portable`** is in `.env`.
+
 ---
 
 ## Option B: Inno Setup .exe installer

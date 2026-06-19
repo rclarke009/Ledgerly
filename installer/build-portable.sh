@@ -25,7 +25,7 @@ docker run --rm \
         *) cp -R "$f" /work/Ledgerly/ 2>/dev/null || true ;;
       esac
     done &&
-    for dot in .dockerignore .env.example; do [ -f /src/$dot ] && cp /src/$dot /work/Ledgerly/; done &&
+    for dot in .dockerignore .env.example .env.portable-xps15.example; do [ -f /src/$dot ] && cp /src/$dot /work/Ledgerly/; done &&
     find /work/Ledgerly -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true &&
     rm -f /work/Ledgerly/*.sqlite /work/Ledgerly/payload.json 2>/dev/null || true &&
     (cd /work && zip -r /out/'"$ZIP_NAME"' Ledgerly -x "*.DS_Store" "Ledgerly/installer/*" "*__pycache__*" "*.sqlite" "Ledgerly/payload.json")
