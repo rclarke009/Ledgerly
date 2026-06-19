@@ -121,13 +121,19 @@ def _rate_infos_from_benchmarks(benchmarks: list[tuple[int, float, str]]) -> lis
     return infos
 
 
-async def fetch_cd_rates() -> list[RateInfo]:
-    """Return generic CD and MMF benchmark rates (no user data)."""
+def fetch_cd_rates_local() -> list[RateInfo]:
+    """Curated CD and MMF benchmarks only — no external API calls."""
     benchmarks = _benchmarks_from_config()
-    infos = _rate_infos_from_benchmarks(benchmarks)
-    mmf_live = await _fetch_mmf_via_finance_tools()
-    if mmf_live:
-        infos.append(mmf_live)
+    return _rate_infos_from_benchmarks(benchmarks)
+
+
+async def fetch_cd_rates(*, include_external: bool = True) -> list[RateInfo]:
+    """Return generic CD and MMF benchmark rates (no user data)."""
+    infos = fetch_cd_rates_local()
+    if include_external:
+        mmf_live = await _fetch_mmf_via_finance_tools()
+        if mmf_live:
+            infos.append(mmf_live)
     return infos
 
 
@@ -180,13 +186,17 @@ def get_cached_rate_snapshots(conn: Any, max_age_sec: int = 86400) -> list[RateI
     return out
 
 
-async def fetch_cd_rates_with_cache(conn: Any | None = None) -> list[RateInfo]:
+async def fetch_cd_rates_with_cache(
+    conn: Any | None = None,
+    *,
+    include_external: bool = True,
+) -> list[RateInfo]:
     """Prefer fresh DB cache; otherwise fetch and optionally persist."""
     if conn is not None:
         cached = get_cached_rate_snapshots(conn)
         if cached:
             return cached
-    infos = await fetch_cd_rates()
+    infos = await fetch_cd_rates(include_external=include_external)
     if conn is not None and infos:
         try:
             persist_rate_snapshots(conn, infos)

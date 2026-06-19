@@ -14,10 +14,10 @@ from app.ask_conversation import (
 )
 from app.ask_fast_paths import detect_fast_path_kind, try_fast_path_answer, _is_mortgage_payment_question
 from app.ask_sources import detect_related_documents
+from app.ask_tool_router import run_ask_tools
 from app.ask_trace import log_ask_event
 from app.config import LLM_INTER_CALL_SLEEP_SEC
 from app.db import list_accounts, list_obligations, list_positions
-from app.finance_tools_client import fetch_finance_tools_block
 from app.models import AskRequest, RelatedDocument, RetrievedChunk
 from app import embeddings_client
 from app.retrieval import retrieve_top_k
@@ -96,7 +96,7 @@ def _build_rag_messages(
     question: str,
     chunks: list[RetrievedChunk],
     layer2: str,
-    finance: str,
+    tool_block: str,
     prior_turns: list[dict[str, str]],
 ) -> list[dict[str, str]]:
     parts = [
@@ -107,11 +107,12 @@ def _build_rag_messages(
             '(e.g. "Based on your CD maturity letter…"). '
             "If the user pinned a document, treat it as the primary source."
         ),
+        "When tool results are present, treat them as authoritative for holdings, rates, and triggers.",
     ]
-    if layer2:
+    if tool_block:
+        parts.append(tool_block)
+    elif layer2:
         parts.append(layer2)
-    if finance:
-        parts.append(finance)
     if chunks:
         parts.append("Document excerpts:")
         for c in chunks:
@@ -126,16 +127,26 @@ def _build_rag_messages(
     return messages
 
 
-def _need_more_context(chunks: list[RetrievedChunk], layer2: str) -> bool:
-    return not chunks and not layer2.strip()
+def _need_more_context(
+    chunks: list[RetrievedChunk],
+    layer2: str,
+    tool_block: str,
+) -> bool:
+    return not chunks and not layer2.strip() and not tool_block.strip()
 
 
 def _has_doc_scope(ask_request: AskRequest) -> bool:
     return bool(ask_request.doc_id or ask_request.doc_ids or ask_request.tag)
 
 
-def _skip_rag_for_structured(route: str, layer2: str, ask_request: AskRequest) -> bool:
-    return route == "structured_data" and bool(layer2.strip()) and not _has_doc_scope(ask_request)
+def _skip_rag_for_structured(
+    route: str,
+    layer2: str,
+    tool_block: str,
+    ask_request: AskRequest,
+) -> bool:
+    has_data = bool(layer2.strip()) or bool(tool_block.strip())
+    return route == "structured_data" and has_data and not _has_doc_scope(ask_request)
 
 
 async def build_prompt_and_chunks(
@@ -167,16 +178,18 @@ async def build_prompt_and_chunks(
             return [], [], "fast_path", True, answer, related
 
     layer2 = ""
-    if route in ("structured_data", "rag"):
+    tool_block = ""
+    tool_results: list[dict] = []
+    if route in ("structured_data", "rag", "rag_only"):
         layer2 = await _layer2_summary(conn)
-
-    finance_block = ""
-    if route == "rag":
-        await _maybe_sleep_before_llm()
-        finance_block = await fetch_finance_tools_block(question, skip_llm=True)
+        if progress_cb:
+            await progress_cb("tools")
+        tool_block, tool_results = await run_ask_tools(
+            conn, question, route, ask_request=scoped_request
+        )
 
     top_chunks: list[RetrievedChunk] = []
-    skip_rag = _skip_rag_for_structured(route, layer2, scoped_request)
+    skip_rag = _skip_rag_for_structured(route, layer2, tool_block, scoped_request)
     if skip_rag:
         log_ask_event("retrieval_gate", skipped=True, reason="structured_layer2", layer2_chars=len(layer2))
     elif scoped_request.use_rag and route in ("rag", "rag_only", "structured_data"):
@@ -197,17 +210,18 @@ async def build_prompt_and_chunks(
 
     related_documents = detect_related_documents(conn, scoped_request, top_chunks, question)
 
-    if _need_more_context(top_chunks, layer2) and route != "structured_data":
+    if _need_more_context(top_chunks, layer2, tool_block) and route != "structured_data":
         return [], [], route, False, None, related_documents
 
     if progress_cb:
         await progress_cb("generating")
 
-    messages = _build_rag_messages(question, top_chunks, layer2, finance_block, prior_turns)
+    messages = _build_rag_messages(question, top_chunks, layer2, tool_block, prior_turns)
     log_ask_event(
         "build_prompt",
         route=route,
         chunks=len(top_chunks),
+        tools=len(tool_results),
         prompt_len=sum(len(m.get("content") or "") for m in messages),
     )
     return messages, top_chunks, route, True, None, related_documents

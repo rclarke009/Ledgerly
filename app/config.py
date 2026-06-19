@@ -93,6 +93,9 @@ OLLAMA_WARMUP_KEEP_ALIVE = os.getenv("OLLAMA_WARMUP_KEEP_ALIVE", "15m").strip()
 OLLAMA_WARMUP_SESSION_SEC = int(os.getenv("OLLAMA_WARMUP_SESSION_SEC", "900"))
 # Short pause after ask graph build before streaming final answer.
 ASK_COOLDOWN_AFTER_PREP_SEC = float(os.getenv("ASK_COOLDOWN_AFTER_PREP_SEC", "0"))
+# Ask local tools (SoT, benchmarks, calcs — no external APIs).
+ASK_TOOLS_ENABLED = os.getenv("ASK_TOOLS_ENABLED", "true").strip().lower() in ("true", "1", "yes")
+ASK_TOOLS_MAX_PER_QUESTION = int(os.getenv("ASK_TOOLS_MAX_PER_QUESTION", "6"))
 # Background ask queue pacing.
 ASK_QUEUE_INTER_JOB_SLEEP_SEC = float(os.getenv("ASK_QUEUE_INTER_JOB_SLEEP_SEC", "5"))
 ASK_QUEUE_ESTIMATED_WAIT_SEC = int(os.getenv("ASK_QUEUE_ESTIMATED_WAIT_SEC", "600"))

@@ -249,6 +249,49 @@ Prepare **both** tracks above, then try:
 
 ---
 
+### F — Tool-backed questions (local Ask tools)
+
+Run these **after** sections **A–C** (or the [Real data pack](#real-data-pack-copy-paste) Steps 1–3). They use the same saved data and documents — no new ingest required.
+
+These questions are chosen to exercise **local Ask tools** (`get_positions`, `get_cd_benchmark_rates`, `liquidity_cross_check`, `compare_roll_options`, calculation tools, etc.). Nothing is sent to external APIs; benchmarks come from curated local defaults.
+
+**How to tell tools are working**
+
+| Signal | Good | Weak (tools may not have run) |
+|--------|------|-------------------------------|
+| **Numbers** | Uses *your* principals, dates, and obligation amounts (e.g. $25,000, July 2, $1,200 tax) | Generic filler with no figures from your Data |
+| **Benchmarks** | Mentions curated CD tiers (~4.15%–4.35% by term) or your `REFERENCE_CD_RATES` / `REFERENCE_MMF_APR` | Invented “market rates” with no comparison to your holding |
+| **Liquidity** | Says whether maturing principal likely covers nearby bills (±14-day window) | Ignores obligations near maturity |
+| **Roll / renew** | Lists hold, roll, MMF, wait style options tied to a specific CD | Vague “talk to your bank” with no holding context |
+| **Calculations** | States a computed dollar amount for interest/growth | Refuses or guesses without doing the math |
+| **Logs (optional)** | Server log line `ask_tools` with tool names like `get_positions`, `liquidity_cross_check` | `ask_tools skipped` on every question |
+
+**Prepare:** Real data pack with July 2026 maturity + July 5 property tax is ideal. Shift dates in Step 3 if your “today” is not June 2026.
+
+| # | Type this question | Tool(s) exercised | What a good answer should do |
+|---|-------------------|-------------------|------------------------------|
+| F1 | `How much do I have in CDs and how does that compare to current CD benchmarks?` | `get_positions`, `get_cd_benchmark_rates` | Total CD principal from your positions; compare your APY (e.g. 4.85%) to nearest-term benchmark; not a stock quote or invented rate. |
+| F2 | `What is the money market benchmark rate?` | `get_mmf_benchmark` | States curated MMF benchmark (~4.50% unless you changed `REFERENCE_MMF_APR`); does not call Finnhub or guess VMFXX yield. |
+| F3 | `Do I need the July 2 CD rung to stay liquid for my property tax on July 5?` | `liquidity_cross_check`, `get_obligations` | Cross-check: ~$25k maturing vs ~$1,200 tax; notes ±14-day window; likely “covers” unless you changed amounts. |
+| F4 | `What are my options for the CD maturing July 2, 2026?` | `compare_roll_options`, `get_cd_benchmark_rates` | Structured hold / roll / MMF / wait framing; references your PenFed CD rate and maturity; may note action threshold. |
+| F5 | `Is rolling my 4.85% CD worth it versus the 12-month benchmark?` | `compare_user_rate`, `get_cd_benchmark_rates` | Compares 4.85% to ~12-month benchmark; mentions whether delta is “meaningful” (~0.25%) or small. |
+| F6 | `Give me a dashboard snapshot of maturities and obligations for the next 90 days.` | `get_dashboard_snapshot` | Upcoming maturity (July 2), obligation (July 5), ladder totals — aligned with **Home** status. |
+| F7 | `What is my decision memo for current triggers?` | `get_decision_memo`, `evaluate_triggers` | Operational memo: maturity + obligation (+ IRA if in window); same themes as **Home → Decision memo** but in Ask prose. |
+| F8 | `What did you recommend in past advice?` | `get_decision_history` | Summarizes recent `decision_history` rows if you ran **Home** refresh; “none yet” if history is empty. |
+| F9 | `What documents have I ingested?` | `get_document_metadata` | Lists PenFed maturity notice, property tax notice (or your titles) with chunk counts — no hallucinated filenames. |
+| F10 | `Find my PenFed maturity notice and tell me the automatic renewal language.` | `search_documents` | Pulls renewal/auto-renew wording from ingested letter; source chunks from that doc. |
+| F11 | `If I put $25,000 in a 1-year CD at 4.85% annual interest, what's the approximate interest?` | `calculate_simple_interest` | ~$1,212 gross simple interest for one year (allow small rounding); states assumption (simple, one year). |
+| F12 | `If I put $10,000 at 5% for 10 years, how much will it grow with compound interest?` | `calculate_compound_interest` | ~$16,289 final amount (compound); shows it computed, not guessed. |
+| F13 | `What's the after-tax interest on $25,000 at 4.85% for one year in Florida?` | `compare_after_tax_yield` | Gross interest ~$1,212; notes Florida has no state tax in assumptions; applies a federal rate assumption (default 22% unless you state another). |
+
+**Tips**
+
+- **F1–F8** need saved data (section B / Real data pack Step 3). **F9–F10** need ingested documents (section A / Steps 1–2).
+- Preset chips (**B1–B5**) still use **fast paths** (no LLM). Section **F** questions intentionally go through the LLM with a **Tool results** block — answers may take longer.
+- If an answer looks right but you want confirmation, check logs for `ask_tools` with the tool names in the table above.
+
+---
+
 ### E — Other tabs (quick UI smoke tests)
 
 Not Ask questions, but useful in the same “final check” session:
@@ -391,7 +434,7 @@ Confirm obligation tracking on Home if prompted.
 
 #### Step 5 — Ask questions (copy into Ask tab)
 
-Use preset chips where they match, or paste these exactly into **Question**:
+Use preset chips where they match, or paste these exactly into **Question**. For **tool-backed** checks (benchmarks, liquidity cross-check, calculations), see [section F](#f--tool-backed-questions-local-ask-tools) above.
 
 **Triggers & status**
 
