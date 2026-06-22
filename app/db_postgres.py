@@ -168,7 +168,6 @@ CREATE TABLE IF NOT EXISTS ask_history (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ask_history_asked_at ON ask_history(asked_at DESC);
-CREATE INDEX IF NOT EXISTS idx_ask_history_conversation_id ON ask_history(conversation_id);
 """
 
 

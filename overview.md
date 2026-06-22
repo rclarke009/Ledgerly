@@ -23,8 +23,11 @@ Prior versions of this file described a storm-damage–report demo domain; the *
 From the repo root (with Docker running):
 
 ```bash
-docker compose up -d
+./start.sh          # Mac/Linux — pulls models and waits for health
+# Start.bat         # Windows
 ```
+
+Manual alternative: `docker compose up -d` plus one-time `ollama pull` (see [setup_and_testing.md](setup_and_testing.md)).
 
 The bundled layout runs the **web app**, **Postgres + pgvector**, **Ollama** (text, embeddings, and vision for scans), and an optional **finance-tools** sidecar. First start may pull **large** container images and AI models—see **[install-instructions.md](install-instructions.md)** (portable) or **[setup_and_testing.md](setup_and_testing.md)** (developers).
 
