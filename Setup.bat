@@ -120,6 +120,8 @@ if "!FAIL!"=="0" (
   )
   echo Browser URL:   http://localhost:8000/
   echo.
+  echo If something goes wrong later, run Check-Ledgerly.bat (saves ledgerly-diagnose.txt on Desktop).
+  echo.
   echo You can delete the folder you extracted from the ZIP if you like.
 ) else (
   echo   INSTALLATION FAILED — !FAIL! problem(s^) above

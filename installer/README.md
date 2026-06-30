@@ -34,9 +34,9 @@ Output: **`installer/output/Ledgerly-Portable.zip`**
 ### Give it to your dad
 
 1. Send him **Ledgerly-Portable.zip**
-2. He unzips it (e.g. to Desktop or Downloads). He’ll get a folder **Ledgerly** with `Setup.bat`, `Start.bat`, **install-instructions.md**, etc. inside. Point him at **install-instructions.md** first—it explains **how long the first startup can take** (large downloads are normal) vs later starts.
+2. He unzips it (e.g. to Desktop or Downloads). He’ll get a folder **Ledgerly** with `Setup.bat`, `Start.bat`, `starting.html`, `Check-Ledgerly.bat`, **install-instructions.md**, etc. inside. Point him at **install-instructions.md** first—it explains **how long the first startup can take** (large downloads are normal) vs later starts.
 3. He double-clicks **Setup.bat** once. It copies Ledgerly to `%LocalAppData%\Ledgerly` and creates a **Ledgerly** shortcut on the desktop.
-4. He can delete the unzipped folder if he likes. To start Ledgerly: double-click the desktop shortcut (Docker must be running).
+4. He can delete the unzipped folder if he likes. To start Ledgerly: double-click the desktop shortcut (Docker must be running). **Start.bat** opens **starting.html** in the browser (progress + auto-redirect) and shows download progress in the console. If something fails silently, run **`Check-Ledgerly.bat`** — it writes **`ledgerly-diagnose.txt`** to the Desktop.
 
 To stop: open a terminal in `%LocalAppData%\Ledgerly` and run `docker compose down`, or we could add a Stop Ledgerly shortcut later.
 

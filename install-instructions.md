@@ -24,7 +24,7 @@ You should have **Ledgerly-Portable.zip** (from a download, USB stick, or email)
 1. Right-click **Ledgerly-Portable.zip**.
 2. Click **Extract All…**.
 3. Choose a place (e.g. **Desktop** or **Downloads**) and click **Extract**.
-4. You’ll get a new folder named **Ledgerly** with several files inside, including **Setup.bat**, **Backup.bat** (optional database backup), and this file (**install-instructions.md**).
+4. You’ll get a new folder named **Ledgerly** with several files inside, including **Setup.bat**, **Start.bat**, **starting.html** (startup progress page), **Check-Ledgerly.bat** (troubleshooting), **Backup.bat** (optional database backup), and this file (**install-instructions.md**).
 
 ---
 
@@ -50,6 +50,8 @@ Ledgerly uses **Docker** to run several parts on your PC: a small database, the 
 **Tips**
 
 - Leave the **black window** open until it says **Ready** (or shows an error you can read). Closing it too early can stop the stack.
+- Your browser opens a **Starting Ledgerly** page (`starting.html`) right away. It shows elapsed time and opens the app automatically when ready—**first start may take 30+ minutes**; that page is normal.
+- Watch the **black window** for Docker image and AI model download progress (numbered steps 1–7).
 - **Docker must be running** before you double-click the shortcut (whale icon in the system tray, not grayed out).
 - Your data and downloaded models stay in Docker’s storage on this computer—you **don’t** re-download everything every day unless someone removed Docker volumes or reinstalled from scratch.
 
@@ -60,8 +62,11 @@ For developers or manual Docker use, see **setup_and_testing.md** in the same fo
 ## Step 4: Start Ledgerly
 
 1. Make sure **Docker is running** (Docker icon in the system tray).
-2. Double-click the **Ledgerly** shortcut on your desktop.
-3. A window will open. **Read [How long startup takes](#how-long-startup-takes-normal-not-broken)** above so you know what to expect—especially the **first** time. When it says **Ready** and opens your browser to **http://localhost:8000/**, you’re in. In the app, open **How to use** for a short guide, or read **instructions.md** in the install folder.
+2. Double-click the **Ledgerly** shortcut on your desktop (or **Start.bat** in `%LocalAppData%\Ledgerly`).
+3. Two things open:
+   - A **black window** with numbered steps (Docker images, AI models, etc.) — **leave it open**.
+   - A browser tab titled **Starting Ledgerly…** — it counts elapsed time and opens **http://localhost:8000/** automatically when ready.
+4. **Read [How long startup takes](#how-long-startup-takes-normal-not-broken)** above so you know what to expect—especially the **first** time (often **30+ minutes**). When the black window says **LEDGERLY IS READY** and the browser shows the app, you’re in. Open **How to use** in the app for a short guide, or read **instructions.md** in the install folder.
 
 ---
 
@@ -141,14 +146,21 @@ If **pg_restore** says another program is using the database, fully stop the sta
 
 ## If something goes wrong
 
+- **Nothing seems to work and you’re not sure why**  
+  → Double-click **Check-Ledgerly.bat** (in the **Ledgerly** folder or in `%LocalAppData%\Ledgerly`). It checks install paths, Docker, containers, and the web app, shows clear **[OK]** / **[WARNING]** / **[FAILED]** lines, and saves **ledgerly-diagnose.txt** on your **Desktop** to send to support.
+
 - **“Docker is not running”** or the shortcut does nothing useful  
   → Start **Docker Desktop** from the Start menu and wait until its icon in the system tray shows it’s running. Try the shortcut again.
 
 - **The black window closes too fast**  
   → Run **Setup.bat** again from the unzipped **Ledgerly** folder or from `%LocalAppData%\Ledgerly`. It’s safe to run more than once.
 
+- **No desktop shortcut**  
+  → Press **Win+R**, paste `%LocalAppData%\Ledgerly`, press **Enter**, then double-click **Start.bat**. Or run **Check-Ledgerly.bat** for step-by-step hints.
+
 - **Browser doesn’t open or the page doesn’t load**  
-  → Wait a minute and open your browser yourself. Go to: **http://localhost:8000/**
+  → Wait a minute and open your browser yourself. Go to: **http://localhost:8000/**  
+  → Run **Check-Ledgerly.bat** to see whether the app is actually running.
 
 ---
 

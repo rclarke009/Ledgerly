@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Starting Ledgerly…</title>
+  <style>
+    :root {
+      --bg: #f6f8fa;
+      --surface: #ffffff;
+      --border: #d0d7de;
+      --text: #24292f;
+      --text-muted: #57606a;
+      --accent: #0969da;
+      --success: #1a7f37;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      font-size: 18px;
+      min-height: 100vh;
+    }
+    .wrap {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 3rem;
+    }
+    h1 {
+      font-size: 1.75rem;
+      margin: 0 0 0.75rem;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.25rem 0;
+    }
+    .notice {
+      border-left: 4px solid var(--accent);
+      padding-left: 1rem;
+      margin: 0;
+    }
+    .status {
+      font-size: 1.1rem;
+      margin: 0 0 0.5rem;
+    }
+    .timer {
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+    .ready { color: var(--success); font-weight: 600; }
+    .hint {
+      color: var(--text-muted);
+      font-size: 1rem;
+      margin-top: 1rem;
+    }
+    ul { margin: 0.5rem 0 0; padding-left: 1.25rem; }
+    li { margin: 0.35rem 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Starting Ledgerly…</h1>
+    <div class="card">
+      <p class="notice">
+        <strong>First start may take 30+ minutes.</strong>
+        Docker and AI models download in the background.
+        <strong>Leave the black Ledgerly window open</strong> until it says ready.
+      </p>
+    </div>
+    <div class="card">
+      <p class="status" id="status">Waiting for Ledgerly to start…</p>
+      <p class="timer" id="timer">Elapsed: 0 min 0 sec</p>
+    </div>
+    <p class="hint" id="hint">
+      This page will open Ledgerly automatically when it is ready.
+      You can also try <a href="http://localhost:8000/">http://localhost:8000/</a> yourself after a few minutes.
+    </p>
+  </div>
+  <script>
+    (function () {
+      var statusEl = document.getElementById("status");
+      var timerEl = document.getElementById("timer");
+      var hintEl = document.getElementById("hint");
+      var startedAt = Date.now();
+      var pollIntervalMs = 3000;
+      var healthUrl = "http://localhost:8000/health";
+      var appUrl = "http://localhost:8000/";
+
+      function formatElapsed(ms) {
+        var totalSec = Math.floor(ms / 1000);
+        var min = Math.floor(totalSec / 60);
+        var sec = totalSec % 60;
+        return min + " min " + sec + " sec";
+      }
+
+      setInterval(function () {
+        timerEl.textContent = "Elapsed: " + formatElapsed(Date.now() - startedAt);
+      }, 1000);
+
+      function updateStatusForElapsed() {
+        var min = Math.floor((Date.now() - startedAt) / 60000);
+        if (min >= 5) {
+          statusEl.textContent =
+            "Still starting (" + min + " min) — this is normal on a first run. Check the black window for download progress.";
+        } else if (min >= 1) {
+          statusEl.textContent =
+            "Still starting (" + min + " min) — downloading Docker images and AI models.";
+        }
+      }
+
+      function checkHealth() {
+        updateStatusForElapsed();
+        fetch(healthUrl, { cache: "no-store" })
+          .then(function (res) {
+            if (!res.ok) throw new Error("not ready");
+            return res.json();
+          })
+          .then(function (data) {
+            if (data && data.healthy === true) {
+              statusEl.textContent = "Ready — opening Ledgerly…";
+              statusEl.className = "status ready";
+              hintEl.textContent = "Redirecting to the app now.";
+              window.location.replace(appUrl);
+              return;
+            }
+            throw new Error("not healthy");
+          })
+          .catch(function () {
+            /* keep polling — app not up yet */
+          });
+      }
+
+      checkHealth();
+      setInterval(checkHealth, pollIntervalMs);
+    })();
+  </script>
+</body>
+</html>

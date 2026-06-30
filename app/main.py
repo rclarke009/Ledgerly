@@ -2868,7 +2868,9 @@ def delete_ira_overview_route(request: Request, ira_id: str):
 
 
 @app.get("/health")
-def health():
+def health(response: Response):
+    # Allow file:// starting.html to poll readiness during Windows Start.bat bootstrap.
+    response.headers["Access-Control-Allow-Origin"] = "*"
     ask_mode = "queued" if _is_portable_profile() else "stream"
     return {"healthy": True, "ask_mode": ask_mode, "profile": _portable_profile() or "default"}
 
