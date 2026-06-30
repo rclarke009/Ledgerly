@@ -1,0 +1,141 @@
+# Ledgerly: Postgres+pgvector (internal only) + Ollama + app + optional finance MCP.
+# Postgres is not published to the host — only the Ledgerly app container reaches it on the Docker network.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ledgerly-postgres
+    environment:
+      POSTGRES_USER: ledgerly
+      POSTGRES_PASSWORD: ledgerly
+      POSTGRES_DB: ledgerly
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledgerly -d ledgerly"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  finance-mcp:
+    build:
+      context: ./mcp-finance-tools
+    container_name: ledgerly-finance-mcp
+    environment:
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+    ports:
+      - "8001:8000"
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ledgerly-ollama
+    environment:
+      # Caps llama.cpp thread pool during inference (read by Ollama server, not the app).
+      # Lower = cooler laptop, slower answers. Override in .env (e.g. OLLAMA_NUM_THREADS=8).
+      - OLLAMA_NUM_THREADS=${OLLAMA_NUM_THREADS:-4}
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+  ledgerly:
+    build: .
+    container_name: ledgerly-app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - EMBED_BASE_URL=http://ollama:11434
+      - EMBED_MODEL=nomic-embed-text
+      - LLM_BASE_URL=http://ollama:11434
+      # LLM_MODEL / LLAVA_MODEL: omit so .env / LEDGERLY_PROFILE defaults apply (see app/config.py).
+      # Internal pgvector DB (overrides DATABASE_URL in .env for Compose). Not exposed outside Docker.
+      - DATABASE_URL=postgresql://ledgerly:ledgerly@postgres:5432/ledgerly
+      # Persist originals across container rebuilds (ledgerly_data volume).
+      - LEDGERLY_ORIGINALS_VAULT=/data/vault
+      # Host browser reaches the app via published port; client IP is the Docker bridge, not 127.0.0.1.
+      - ALLOW_LOCAL_FILE_REVEAL=true
+      # In-container URL; do not point at host localhost from .env when using Docker.
+      - FINANCE_TOOLS_BASE_URL=http://finance-mcp:8000
+      # Observability: enable with the observability Compose profile (see METRICS_ENABLED / LOG_JSON in .env.example).
+      - METRICS_ENABLED=${METRICS_ENABLED:-false}
+      - LOG_JSON=${LOG_JSON:-false}
+    volumes:
+      - ledgerly_data:/data
+      # Live-reload UI from the repo without rebuilding the image (local dev).
+      - ./static:/app/static:ro
+      # Optional originals vault on the host (set LEDGERLY_ORIGINALS_VAULT=/data/vault in .env):
+      # - ./ledgerly-vault:/data/vault
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+      finance-mcp:
+        condition: service_started
+    restart: unless-stopped
+
+  prometheus:
+    profiles: ["observability"]
+    image: prom/prometheus:v2.48.1
+    container_name: ledgerly-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    depends_on:
+      - ledgerly
+    restart: unless-stopped
+
+  loki:
+    profiles: ["observability"]
+    image: grafana/loki:2.9.4
+    container_name: ledgerly-loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+
+  promtail:
+    profiles: ["observability"]
+    image: grafana/promtail:2.9.4
+    container_name: ledgerly-promtail
+    user: root
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./observability/promtail-config.yml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  grafana:
+    profiles: ["observability"]
+    image: grafana/grafana:10.2.3
+    container_name: ledgerly-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_USERS_DEFAULT_THEME: dark
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  ledgerly_data:
+  postgres_data:

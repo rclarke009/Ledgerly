@@ -13,6 +13,7 @@ SKIP_TOP_LEVEL = frozenset(
     {".env", ".git", "__pycache__", ".venv", "installer", ".idea", ".vscode"}
 )
 DOTFILES_TO_INCLUDE = (".dockerignore", ".env.example", ".env.portable-xps15.example")
+LOCAL_DATA_SUFFIXES = (".sqlite", ".db", ".dump")
 ZIP_NAME = "Ledgerly-Portable.zip"
 
 
@@ -21,7 +22,7 @@ def _copy_tree(src: Path, dest: Path) -> None:
         src,
         dest,
         dirs_exist_ok=False,
-        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".env", ".venv"),
     )
 
 
@@ -43,6 +44,8 @@ def main() -> int:
                 continue
             if name.startswith("."):
                 continue
+            if path.suffix in LOCAL_DATA_SUFFIXES:
+                continue
             dest = stage_app / name
             if path.is_dir():
                 _copy_tree(path, dest)
@@ -54,19 +57,26 @@ def main() -> int:
             if src.is_file():
                 shutil.copy2(src, stage_app / dot)
 
-        for d in list(stage_app.rglob("__pycache__")):
+        for d in list(stage_app.rglob("__pycache__")) + list(stage_app.rglob(".venv")):
             if d.is_dir():
                 shutil.rmtree(d, ignore_errors=True)
 
-        for f in stage_app.glob("*.sqlite"):
-            f.unlink(missing_ok=True)
+        for suffix in LOCAL_DATA_SUFFIXES:
+            for f in stage_app.rglob(f"*{suffix}"):
+                if f.is_file():
+                    f.unlink(missing_ok=True)
+        for f in stage_app.rglob(".env"):
+            if f.is_file():
+                f.unlink(missing_ok=True)
         (stage_app / "payload.json").unlink(missing_ok=True)
 
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for f in stage_app.rglob("*"):
                 if not f.is_file():
                     continue
-                if f.name == ".DS_Store":
+                if f.name == ".DS_Store" or f.suffix in LOCAL_DATA_SUFFIXES:
+                    continue
+                if f.name == ".env":
                     continue
                 arc = f.relative_to(stage_root)
                 zf.write(f, arc.as_posix())

@@ -1,0 +1,10 @@
+.venv
+.venv-mlx
+.env
+*.db
+__pycache__
+*.pyc
+.git
+.gitignore
+*.md
+scripts

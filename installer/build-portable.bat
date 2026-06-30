@@ -13,7 +13,7 @@ docker run --rm ^
   -v "%OUT_DIR%:/out" ^
   -w /work ^
   alpine:latest ^
-  sh -c "apk add --no-cache zip >/dev/null && rm -rf /work && mkdir -p /work/Ledgerly && cd /src && for f in *; do case \"$f\" in .env|.git|__pycache__|.venv|installer|.idea|.vscode) ;; *) cp -R \"$f\" /work/Ledgerly/ 2>/dev/null ;; esac; done && for dot in .dockerignore .env.example; do [ -f /src/$dot ] && cp /src/$dot /work/Ledgerly/; done && find /work/Ledgerly -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null; rm -f /work/Ledgerly/*.sqlite /work/Ledgerly/payload.json 2>/dev/null; (cd /work && zip -r /out/Ledgerly-Portable.zip Ledgerly -x \"*.DS_Store\" \"Ledgerly/installer/*\" \"*__pycache__*\" \"*.sqlite\" \"Ledgerly/payload.json\")"
+  sh -c "apk add --no-cache zip >/dev/null && rm -rf /work && mkdir -p /work/Ledgerly && cd /src && for f in *; do case \"$f\" in .env|.git|__pycache__|.venv|installer|.idea|.vscode) ;; *) cp -R \"$f\" /work/Ledgerly/ 2>/dev/null ;; esac; done && for dot in .dockerignore .env.example .env.portable-xps15.example; do [ -f /src/$dot ] && cp /src/$dot /work/Ledgerly/; done && find /work/Ledgerly -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null; find /work/Ledgerly -type d -name .venv -exec rm -rf {} + 2>/dev/null; find /work/Ledgerly -type f \( -name '*.sqlite' -o -name '*.db' -o -name '*.dump' \) -delete 2>/dev/null; find /work/Ledgerly -type f -name '.env' -delete 2>/dev/null; rm -f /work/Ledgerly/payload.json 2>/dev/null; (cd /work && zip -r /out/Ledgerly-Portable.zip Ledgerly -x \"*.DS_Store\" \"Ledgerly/installer/*\" \"*__pycache__*\" \"*.sqlite\" \"*.db\" \"*.dump\" \"Ledgerly/payload.json\" \"Ledgerly/.env\" \"*/*/.venv/*\")"
 
 if errorlevel 1 (
   echo Build failed.

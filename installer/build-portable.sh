@@ -27,8 +27,11 @@ docker run --rm \
     done &&
     for dot in .dockerignore .env.example .env.portable-xps15.example; do [ -f /src/$dot ] && cp /src/$dot /work/Ledgerly/; done &&
     find /work/Ledgerly -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true &&
-    rm -f /work/Ledgerly/*.sqlite /work/Ledgerly/payload.json 2>/dev/null || true &&
-    (cd /work && zip -r /out/'"$ZIP_NAME"' Ledgerly -x "*.DS_Store" "Ledgerly/installer/*" "*__pycache__*" "*.sqlite" "Ledgerly/payload.json")
+    find /work/Ledgerly -type d -name .venv -exec rm -rf {} + 2>/dev/null || true &&
+    find /work/Ledgerly -type f \( -name "*.sqlite" -o -name "*.db" -o -name "*.dump" \) -delete 2>/dev/null || true &&
+    find /work/Ledgerly -type f -name ".env" -delete 2>/dev/null || true &&
+    rm -f /work/Ledgerly/payload.json 2>/dev/null || true &&
+    (cd /work && zip -r /out/'"$ZIP_NAME"' Ledgerly -x "*.DS_Store" "Ledgerly/installer/*" "*__pycache__*" "*.sqlite" "*.db" "*.dump" "Ledgerly/payload.json" "*/*/.venv/*")
   '
 
 echo "Built: $OUT_DIR/$ZIP_NAME"
