@@ -13,6 +13,7 @@ from app.ask_calculations import (
     compare_after_tax_yield,
 )
 from app.config import (
+    FINANCE_TOOLS_BASE_URL,
     LIQUIDITY_CROSSCHECK_DAYS,
     MATURITY_DAYS_AHEAD,
     OBLIGATION_DAYS_AHEAD,
@@ -41,7 +42,6 @@ from app.reference_data import (
     RateInfo,
     closest_cd_benchmark,
     compare_user_rate,
-    fetch_cd_rates_local,
     mmf_benchmark,
 )
 from app.triggers import _parse_date, evaluate_triggers
@@ -495,11 +495,15 @@ def _tool_get_dashboard_snapshot(conn: Any, args: dict[str, Any]) -> dict[str, A
 async def _local_rate_infos(conn: Any) -> list[RateInfo]:
     from app.reference_data import fetch_cd_rates_with_cache
 
-    return await fetch_cd_rates_with_cache(conn, include_external=False)
+    return await fetch_cd_rates_with_cache(
+        conn, include_external=bool(FINANCE_TOOLS_BASE_URL)
+    )
 
 
-def _tool_get_cd_benchmark_rates(_conn: Any, _args: dict[str, Any]) -> dict[str, Any]:
-    infos = fetch_cd_rates_local()
+async def _tool_get_cd_benchmark_rates(conn: Any, _args: dict[str, Any]) -> dict[str, Any]:
+    from app.reference_data import get_rate_source
+
+    infos = await _local_rate_infos(conn)
     cds = [
         {
             "term_months": r.term_months,
@@ -510,30 +514,43 @@ def _tool_get_cd_benchmark_rates(_conn: Any, _args: dict[str, Any]) -> dict[str,
         for r in infos
         if r.product_type == "cd"
     ]
-    return {"benchmarks": cds, "source": "local_curated"}
+    source = get_rate_source()
+    note = (
+        "Treasury proxy rates from FRED — not your bank's CD offer."
+        if source == "fred"
+        else "Curated benchmark tiers — not institution-specific CD offers."
+    )
+    return {"benchmarks": cds, "source": source, "note": note}
 
 
-def _tool_get_mmf_benchmark(_conn: Any, _args: dict[str, Any]) -> dict[str, Any]:
-    infos = fetch_cd_rates_local()
+async def _tool_get_mmf_benchmark(conn: Any, _args: dict[str, Any]) -> dict[str, Any]:
+    from app.reference_data import get_rate_source
+
+    infos = await _local_rate_infos(conn)
     mmf = mmf_benchmark(infos)
     if not mmf:
         return {"error": "MMF benchmark unavailable"}
+    source = get_rate_source()
     return {
         "rate_apr": mmf.rate_apr,
         "quote": mmf.quote,
         "source_name": mmf.source_name,
-        "source": "local_curated",
+        "source": source,
     }
 
 
-def _tool_compare_user_rate(_conn: Any, args: dict[str, Any]) -> dict[str, Any]:
+async def _tool_compare_user_rate(conn: Any, args: dict[str, Any]) -> dict[str, Any]:
+    from app.reference_data import get_rate_source
+
     user_rate = args.get("user_rate_apr")
     if user_rate is None:
         return {"error": "user_rate_apr required"}
     term_months = args.get("term_months")
-    infos = fetch_cd_rates_local()
+    infos = await _local_rate_infos(conn)
     bench = closest_cd_benchmark(infos, int(term_months) if term_months is not None else None)
-    return compare_user_rate(float(user_rate), bench)
+    result = compare_user_rate(float(user_rate), bench)
+    result["source"] = get_rate_source()
+    return result
 
 
 async def _tool_compare_roll_options(conn: Any, args: dict[str, Any]) -> dict[str, Any]:
@@ -684,9 +701,6 @@ _SYNC_EXECUTORS: dict[str, Callable[[Any, dict[str, Any]], dict[str, Any]]] = {
     "evaluate_triggers": _tool_evaluate_triggers,
     "liquidity_cross_check": _tool_liquidity_cross_check,
     "get_dashboard_snapshot": _tool_get_dashboard_snapshot,
-    "get_cd_benchmark_rates": _tool_get_cd_benchmark_rates,
-    "get_mmf_benchmark": _tool_get_mmf_benchmark,
-    "compare_user_rate": _tool_compare_user_rate,
     "get_document_metadata": _tool_get_document_metadata,
     "get_decision_history": _tool_get_decision_history,
     "calculate_compound_interest": lambda _c, a: calculate_compound_interest(
@@ -708,6 +722,9 @@ _SYNC_EXECUTORS: dict[str, Callable[[Any, dict[str, Any]], dict[str, Any]]] = {
 }
 
 _ASYNC_EXECUTORS = {
+    "get_cd_benchmark_rates": _tool_get_cd_benchmark_rates,
+    "get_mmf_benchmark": _tool_get_mmf_benchmark,
+    "compare_user_rate": _tool_compare_user_rate,
     "compare_roll_options": _tool_compare_roll_options,
     "search_documents": _tool_search_documents,
     "get_decision_memo": _tool_get_decision_memo,

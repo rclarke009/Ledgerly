@@ -62,8 +62,9 @@ Ledgerly is a **private cash-management assistant** focused on taxable CD ladder
 | `OBLIGATION_DAYS_AHEAD` | 30 | Bill due trigger window |
 | `IRA_DAYS_AHEAD` | 45 | IRA awareness trigger window |
 | `LIQUIDITY_CROSSCHECK_DAYS` | 14 | ±days for obligation vs maturity cross-check |
-| `REFERENCE_CD_RATES` | (empty) | Optional JSON benchmark overrides |
-| `REFERENCE_MMF_APR` | 4.50 | MMF benchmark for comparisons |
+| `REFERENCE_CD_RATES` | (empty) | Optional JSON benchmark overrides when FRED/MCP unavailable |
+| `REFERENCE_MMF_APR` | 4.50 | MMF benchmark fallback for comparisons |
+| `FRED_API_KEY` | (empty) | Treasury proxy rates via finance-mcp (no PII; not bank CD offers) |
 
 ## Run
 

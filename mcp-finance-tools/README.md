@@ -1,9 +1,10 @@
 # mcp-finance-tools
 
-MCP server with **local financial calculation tools** (e.g. compound interest) and **optional market-data tools** that call [Finnhub](https://finnhub.io/) using your API key.
+MCP server with **FRED Treasury safe-yield benchmarks** (CD/MMF proxies), **local financial calculations**, and **optional Finnhub stock quotes**.
 
+- **Benchmarks** (`get_safe_yield_benchmarks`) call [FRED](https://fred.stlouisfed.org/) with public Treasury series IDs only — **no user PII** is sent.
 - **Calculations** run on your machine; inputs are not sent to a market vendor.
-- **Quotes** (`get_stock_quote`) send the **symbol** to Finnhub over HTTPS. Put **`FINNHUB_API_KEY`** in a **`.env`** file in this directory (see `.env.example`); `python-dotenv` loads it when the server starts. Variables **already set in your shell** take precedence over `.env`.
+- **Quotes** (`get_stock_quote`) send the **symbol** to Finnhub over HTTPS when `FINNHUB_API_KEY` is set.
 
 ## Run
 
@@ -12,24 +13,33 @@ cd mcp-finance-tools
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# Edit .env and set FINNHUB_API_KEY=... (optional; required for stock quotes)
+# Edit .env: FRED_API_KEY=... (live benchmarks), FINNHUB_API_KEY=... (optional quotes)
 python main.py
 ```
 
-- **Docker (Ledgerly `docker compose`)**: the finance service is exposed on the host as **http://localhost:8001** (container listens on 8000). MCP URL: **http://localhost:8001/mcp**.
-- **Standalone `python main.py`**: default is **http://localhost:8000** — use **`PORT=8010`** (or any free port) if Ledgerly’s main app already uses 8000. MCP path is still **`/mcp`**.
+- **Docker (Ledgerly `docker compose`)**: host **http://localhost:8001** → MCP **http://localhost:8001/mcp**.
+- **Standalone**: default **http://localhost:8000** — use `PORT=8010` if Ledgerly UI uses 8000.
 
-## Spike: test Finnhub without the server
+## MCP tools
 
-Uses the same **`mcp-finance-tools/.env`** as the server.
+| Tool | Egress | Purpose |
+|------|--------|---------|
+| `get_safe_yield_benchmarks` | FRED (optional) | Treasury proxies for 3/6/12/24-month CD terms + MMF |
+| `compare_rate_delta` | None | Compare holding APY % vs benchmark APY % |
+| `calculate_compound_interest` | None | Compound growth |
+| `calculate_simple_interest` | None | CD-style simple interest |
+| `get_stock_quote` | Finnhub (optional) | Stock/ETF price |
+
+Without `FRED_API_KEY`, benchmarks return curated fallback tiers (same defaults as Ledgerly).
+
+## Spike scripts
 
 ```bash
+python scripts/spike_fred.py DGS1
 python scripts/spike_finnhub.py AAPL
 ```
 
 ## MCP client configuration
-
-To connect an MCP client (e.g. Cursor, Claude Desktop), point it at the MCP URL. Example with `mcp-remote`:
 
 ```json
 {
@@ -42,8 +52,8 @@ To connect an MCP client (e.g. Cursor, Claude Desktop), point it at the MCP URL.
 }
 ```
 
-Ensure the server is running before connecting.
+See [CONNECTING.md](CONNECTING.md) and [TESTING.md](TESTING.md) for HTTP fallbacks and test plan.
 
-## Agent behavior
+## Privacy
 
-For **current prices or market data**, agents should call the dedicated tools (e.g. `get_stock_quote`) and **must not guess** prices from internal knowledge. See repo `AGENTS.md` and `TESTING.md` for a sample multi-part question chain.
+FRED requests include only public series IDs (`DGS3MO`, `DGS6MO`, `DGS1`, `DGS2`) and your API key. Finnhub requests include only ticker symbols. User account data, document text, and questions never pass through this server.

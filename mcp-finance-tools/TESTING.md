@@ -2,14 +2,15 @@
 
 This document explains how to test:
 
-- **FastAPI tool routes**: `POST /tools/calculate_compound_interest`, `POST /tools/get_stock_quote`
+- **FastAPI tool routes**: `POST /tools/get_safe_yield_benchmarks`, `POST /tools/compare_rate_delta`, `POST /tools/calculate_compound_interest`, `POST /tools/calculate_simple_interest`, `POST /tools/get_stock_quote`
 - **MCP endpoint** exposed by `fastapi-mcp` (`/mcp`)
 
 ## Prerequisites
 
 - `python3`
 - `curl`
-- **`FINNHUB_API_KEY`** in **`mcp-finance-tools/.env`** for quote tests (copy from `.env.example`; free key: [Finnhub register](https://finnhub.io/register))
+- **`FRED_API_KEY`** in **`mcp-finance-tools/.env`** for live benchmark tests (free: [FRED API key](https://fred.stlouisfed.org/docs/api/api_key.html))
+- **`FINNHUB_API_KEY`** in **`mcp-finance-tools/.env`** for quote tests (optional; [Finnhub register](https://finnhub.io/register))
 - an MCP-capable client (recommended): **Cursor** or **Claude Desktop**
   - or use the `mcp-remote` bridge via `npx` (Node required)
 
@@ -22,7 +23,7 @@ cd mcp-finance-tools
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# Edit .env: set FINNHUB_API_KEY=... (required for get_stock_quote tests below)
+# Edit .env: set FRED_API_KEY=... and optionally FINNHUB_API_KEY=...
 python main.py
 ```
 
@@ -33,7 +34,16 @@ Expected:
 
 **Via Ledgerly `docker compose`:** finance-mcp is mapped to host **`http://localhost:8001`** (see repo `docker-compose.yml`).
 
-## Test 0: Finnhub spike (no server)
+## Test 0a: FRED spike (no server)
+
+```bash
+# Uses the same .env as the server (FRED_API_KEY=...)
+python scripts/spike_fred.py DGS1
+```
+
+Expected: JSON with FRED observations for the 1-year Treasury series.
+
+## Test 0b: Finnhub spike (no server)
 
 ```bash
 # Uses the same .env as the server (FINNHUB_API_KEY=...)
@@ -50,10 +60,34 @@ Open (adjust port if needed):
 
 Expected:
 
-- `POST /tools/calculate_compound_interest` and `POST /tools/get_stock_quote`
-- Schemas: `CompoundInput` (`principal`, `rate`, `years`), `StockQuoteInput` (`symbol`)
+- `POST /tools/get_safe_yield_benchmarks`, `POST /tools/compare_rate_delta`, `POST /tools/calculate_compound_interest`, `POST /tools/calculate_simple_interest`, `POST /tools/get_stock_quote`
+- Schemas include Treasury benchmark output and rate comparison inputs
 
-## Test 2: Compound interest (happy path)
+## Test 2: Safe-yield benchmarks
+
+With `FRED_API_KEY` set, expect `"source":"fred"`. Without it, expect `"source":"curated_fallback"`.
+
+```bash
+curl -sS \
+  -X POST "http://localhost:8001/tools/get_safe_yield_benchmarks" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+Expected: JSON with `benchmarks` array (CD term rows) and `mmf_proxy`. No user data in request body.
+
+## Test 2b: Compare rate delta
+
+```bash
+curl -sS \
+  -X POST "http://localhost:8001/tools/compare_rate_delta" \
+  -H "Content-Type: application/json" \
+  -d '{"user_rate_apr":4.85,"benchmark_rate_apr":5.1}'
+```
+
+Expected: `delta`, `meaningful`, and `summary` fields.
+
+## Test 3: Compound interest (happy path)
 
 ```bash
 curl -sS \
@@ -68,7 +102,7 @@ Expected JSON:
 {"final_amount":16288.95,"total_interest":6288.95}
 ```
 
-## Test 3: Stock quote (happy path)
+## Test 4: Stock quote (happy path)
 
 Requires `FINNHUB_API_KEY`.
 

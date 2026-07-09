@@ -69,28 +69,84 @@ def _benchmarks_from_config() -> list[tuple[int, float, str]]:
     return _parse_reference_cd_rates_env(REFERENCE_CD_RATES)
 
 
-async def _fetch_mmf_via_finance_tools() -> RateInfo | None:
+_last_rate_source: str = "local_curated"
+
+
+def get_rate_source() -> str:
+    """Source of the most recent benchmark fetch: fred, curated_fallback, or local_curated."""
+    return _last_rate_source
+
+
+def _set_rate_source(source: str) -> None:
+    global _last_rate_source
+    _last_rate_source = source
+
+
+def _rate_infos_from_mcp_payload(data: dict[str, Any]) -> list[RateInfo]:
+    """Map finance-mcp get_safe_yield_benchmarks JSON to RateInfo list."""
+    infos: list[RateInfo] = []
+    mcp_source = data.get("source") or "curated_fallback"
+    source_label = "FRED via finance-mcp" if mcp_source == "fred" else "Ledgerly curated fallback via finance-mcp"
+
+    for entry in data.get("benchmarks") or []:
+        if not isinstance(entry, dict):
+            continue
+        rate = entry.get("rate_apr")
+        if rate is None:
+            continue
+        quote = entry.get("quote") or (
+            f"{entry.get('label', 'CD benchmark')}: ~{float(rate):.2f}% APY"
+        )
+        infos.append(
+            RateInfo(
+                quote=str(quote),
+                source_name=entry.get("source_name") or source_label,
+                source_url=entry.get("source_url"),
+                product_type=str(entry.get("product_type") or "cd"),
+                term_months=entry.get("term_months"),
+                rate_apr=float(rate),
+            )
+        )
+
+    mmf = data.get("mmf_proxy")
+    if isinstance(mmf, dict) and mmf.get("rate_apr") is not None:
+        rate = float(mmf["rate_apr"])
+        quote = mmf.get("quote") or f"{mmf.get('label', 'MMF proxy')}: ~{rate:.2f}%"
+        infos.append(
+            RateInfo(
+                quote=str(quote),
+                source_name=mmf.get("source_name") or source_label,
+                source_url=mmf.get("source_url"),
+                product_type="mmf",
+                term_months=mmf.get("term_months"),
+                rate_apr=rate,
+            )
+        )
+
+    return infos
+
+
+async def _fetch_benchmarks_via_finance_tools() -> tuple[list[RateInfo], str] | None:
+    """Fetch safe-yield benchmarks from finance-mcp (no user PII in request)."""
     if not FINANCE_TOOLS_BASE_URL:
         return None
     try:
-        url = f"{FINANCE_TOOLS_BASE_URL.rstrip('/')}/tools/stock_quote"
+        url = f"{FINANCE_TOOLS_BASE_URL.rstrip('/')}/tools/get_safe_yield_benchmarks"
         async with httpx.AsyncClient(timeout=FINANCE_TOOLS_TIMEOUT_SECONDS) as client:
-            resp = await client.post(url, json={"symbol": "VMFXX"})
+            resp = await client.post(url, json={})
             if resp.status_code != 200:
+                logger.debug("finance-mcp benchmarks returned %s", resp.status_code)
                 return None
             data = resp.json()
-        price = data.get("price")
-        if price is None:
+        if not isinstance(data, dict):
             return None
-        # VMFXX price ~$1; yield must come from benchmark — quote NAV for awareness only.
-        return RateInfo(
-            quote=f"VMFXX NAV ~${float(price):.4f} (price only; use MMF yield benchmark for comparison)",
-            source_name="Finnhub via finance-tools",
-            product_type="mmf",
-            rate_apr=None,
-        )
+        infos = _rate_infos_from_mcp_payload(data)
+        if not infos:
+            return None
+        source = str(data.get("source") or "curated_fallback")
+        return infos, source
     except Exception as e:
-        logger.debug("MMF finance-tools fetch skipped: %s", e)
+        logger.debug("finance-mcp benchmarks fetch skipped: %s", e)
         return None
 
 
@@ -129,11 +185,15 @@ def fetch_cd_rates_local() -> list[RateInfo]:
 
 async def fetch_cd_rates(*, include_external: bool = True) -> list[RateInfo]:
     """Return generic CD and MMF benchmark rates (no user data)."""
+    if include_external and FINANCE_TOOLS_BASE_URL:
+        mcp_result = await _fetch_benchmarks_via_finance_tools()
+        if mcp_result is not None:
+            infos, source = mcp_result
+            _set_rate_source(source)
+            return infos
+
     infos = fetch_cd_rates_local()
-    if include_external:
-        mmf_live = await _fetch_mmf_via_finance_tools()
-        if mmf_live:
-            infos.append(mmf_live)
+    _set_rate_source("local_curated")
     return infos
 
 

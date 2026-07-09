@@ -106,7 +106,7 @@ Manual API and Ask-tab walkthroughs: [test_plan.md](test_plan.md), [docs/decisio
 | Local finance tools (interest calc, liquidity cross-check, roll options) | ✅ |
 | Docker + portable Windows installer | ✅ |
 | Observability stack (metrics, dashboards, structured ask traces) | ✅ (optional `--profile observability`) |
-| Optional Finnhub quotes via finance-mcp | ✅ (needs `FINNHUB_API_KEY`) |
+| Optional FRED Treasury benchmarks + Finnhub quotes via finance-mcp | ✅ (needs `FRED_API_KEY` / `FINNHUB_API_KEY`) |
 
 **Roadmap:** API auth for exposed deployments, response caching, deeper empty states when optional services are offline. See [overview.md](overview.md).
 

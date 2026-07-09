@@ -14,16 +14,26 @@ from tools.market import (
     StockQuoteOutput,
     fetch_stock_quote,
 )
+from tools.rates import (
+    CompareRateDeltaInput,
+    CompareRateDeltaOutput,
+    SafeYieldBenchmarksOutput,
+    SimpleInterestInput,
+    SimpleInterestOutput,
+    compare_rate_delta,
+    calculate_simple_interest,
+    get_safe_yield_benchmarks,
+)
 
 app = FastAPI(
     title="Ledgerly Finance MCP Tools",
     description=(
         "MCP server for local AI advisors (e.g. Ledgerly app). "
-        "Calculation tools (e.g. compound interest) run locally. "
-        "Market tools call Finnhub when FINNHUB_API_KEY is set (e.g. in .env); "
-        "ticker symbols are sent to Finnhub over HTTPS."
+        "Safe-yield benchmarks from FRED Treasury series (no user PII sent). "
+        "Calculation tools run locally. "
+        "Optional Finnhub stock quotes when FINNHUB_API_KEY is set."
     ),
-    version="0.2.0",
+    version="0.3.0",
 )
 
 
@@ -49,6 +59,60 @@ def compound_interest_endpoint(input_data: CompoundInput) -> CompoundOutput:
 
 
 @app.post(
+    "/tools/calculate_simple_interest",
+    response_model=SimpleInterestOutput,
+    operation_id="calculate_simple_interest",
+)
+def simple_interest_endpoint(input_data: SimpleInterestInput) -> SimpleInterestOutput:
+    """
+    MCP Tool: Calculate simple interest for CD-style terms.
+
+    Use for \"how much interest on $X at Y% for Z years\" with rate as decimal (0.045 = 4.5%).
+    """
+    try:
+        return calculate_simple_interest(
+            principal=input_data.principal,
+            rate=input_data.rate,
+            years=input_data.years,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@app.post(
+    "/tools/get_safe_yield_benchmarks",
+    response_model=SafeYieldBenchmarksOutput,
+    operation_id="get_safe_yield_benchmarks",
+)
+def safe_yield_benchmarks_endpoint() -> SafeYieldBenchmarksOutput:
+    """
+    MCP Tool: Current safe-yield benchmarks (Treasury proxies for CD terms and MMF).
+
+    Uses FRED when FRED_API_KEY is set; otherwise returns curated fallback tiers.
+    No user data is sent to external APIs — only public Treasury series IDs.
+    """
+    return get_safe_yield_benchmarks()
+
+
+@app.post(
+    "/tools/compare_rate_delta",
+    response_model=CompareRateDeltaOutput,
+    operation_id="compare_rate_delta",
+)
+def compare_rate_delta_endpoint(input_data: CompareRateDeltaInput) -> CompareRateDeltaOutput:
+    """
+    MCP Tool: Compare a holding APY percent to a benchmark APY percent.
+
+    Returns delta, whether the gap is meaningful (default 0.25%), and a short summary.
+    """
+    return compare_rate_delta(
+        user_rate_apr=input_data.user_rate_apr,
+        benchmark_rate_apr=input_data.benchmark_rate_apr,
+        meaningful_delta=input_data.meaningful_delta,
+    )
+
+
+@app.post(
     "/tools/get_stock_quote",
     response_model=StockQuoteOutput,
     operation_id="get_stock_quote",
@@ -70,9 +134,9 @@ mcp = FastApiMCP(
     app,
     name="Ledgerly Finance Tools",
     description=(
-        "Local financial calculations plus optional Finnhub quotes. "
-        "For current prices or market data, use get_stock_quote; do not guess. "
-        "Set FINNHUB_API_KEY in .env (or environment) for quote tools."
+        "Safe-yield benchmarks (FRED Treasury proxies), local financial calculations, "
+        "and optional Finnhub quotes. For CD/MMF comparisons use get_safe_yield_benchmarks; "
+        "do not guess rates. Set FRED_API_KEY for live benchmarks; FINNHUB_API_KEY for quotes."
     ),
 )
 mcp.mount_http()

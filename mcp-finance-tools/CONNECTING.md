@@ -9,17 +9,23 @@ When running locally, the server exposes (replace host/port if you changed `PORT
 - **Docker Compose (Ledgerly)**: host **8001** → container 8000 — **MCP**: `http://localhost:8001/mcp`
 - **Bare `python main.py`**: often **`http://localhost:8000`** unless you set `PORT` to avoid clashing with Ledgerly’s UI on 8000.
 - **Tool HTTP routes (non-MCP fallback)**:
+  - `POST .../tools/get_safe_yield_benchmarks` (FRED Treasury proxies; `FRED_API_KEY` optional)
+  - `POST .../tools/compare_rate_delta`
   - `POST .../tools/calculate_compound_interest`
+  - `POST .../tools/calculate_simple_interest`
   - `POST .../tools/get_stock_quote` (requires `FINNHUB_API_KEY`)
 
 MCP tool names:
 
+- `get_safe_yield_benchmarks`
+- `compare_rate_delta`
 - `calculate_compound_interest`
+- `calculate_simple_interest`
 - `get_stock_quote`
 
-Set **`FINNHUB_API_KEY`** in **`mcp-finance-tools/.env`** (see `.env.example`; loaded by `python-dotenv` on startup) for stock quotes. Symbols are sent to Finnhub. Calculation tools run locally.
+Set **`FRED_API_KEY`** in **`mcp-finance-tools/.env`** for live Treasury benchmark proxies (no user PII sent). Set **`FINNHUB_API_KEY`** for stock quotes. Calculation tools run locally.
 
-**Agent rule:** for current prices or market data, use **`get_stock_quote`** (or other market tools you add). **Do not guess** prices from internal knowledge.
+**Agent rule:** for CD/MMF rate comparisons, use **`get_safe_yield_benchmarks`**; for stock prices use **`get_stock_quote`**. **Do not guess** rates or prices from internal knowledge.
 
 ## 1) Run the MCP server
 
@@ -27,7 +33,7 @@ Set **`FINNHUB_API_KEY`** in **`mcp-finance-tools/.env`** (see `.env.example`; l
 cd mcp-finance-tools
 source .venv/bin/activate
 cp .env.example .env
-# Edit .env: FINNHUB_API_KEY=... (optional; required for quotes)
+# Edit .env: FRED_API_KEY=... (benchmarks), FINNHUB_API_KEY=... (optional quotes)
 python main.py
 ```
 

@@ -75,6 +75,53 @@ async def test_get_cd_benchmark_rates_local_only(conn):
     assert "benchmarks" in result
     assert len(result["benchmarks"]) >= 1
     assert result["source"] == "local_curated"
+    assert "note" in result
+
+
+@pytest.mark.asyncio
+async def test_get_cd_benchmark_rates_mcp_source(conn):
+    mcp_response = {
+        "source": "fred",
+        "benchmarks": [
+            {
+                "product_type": "cd",
+                "term_months": 12,
+                "rate_apr": 5.0,
+                "label": "1-Year Treasury",
+                "source_name": "FRED",
+                "quote": "test",
+            }
+        ],
+        "mmf_proxy": {
+            "product_type": "mmf",
+            "rate_apr": 4.8,
+            "label": "MMF",
+            "source_name": "FRED",
+        },
+    }
+
+    class MockResponse:
+        status_code = 200
+
+        def json(self):
+            return mcp_response
+
+    class MockClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def post(self, url, json=None):
+            return MockResponse()
+
+    with patch("app.reference_data.FINANCE_TOOLS_BASE_URL", "http://finance-mcp:8000"):
+        with patch("app.ask_tools.FINANCE_TOOLS_BASE_URL", "http://finance-mcp:8000"):
+            with patch("app.reference_data.httpx.AsyncClient", return_value=MockClient()):
+                result = await execute_tool(conn, "get_cd_benchmark_rates", {})
+    assert result["source"] == "fred"
+    assert result["benchmarks"][0]["rate_apr"] == pytest.approx(5.0)
 
 
 @pytest.mark.asyncio

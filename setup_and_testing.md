@@ -253,14 +253,14 @@ Prepare **both** tracks above, then try:
 
 Run these **after** sections **A–C** (or the [Real data pack](#real-data-pack-copy-paste) Steps 1–3). They use the same saved data and documents — no new ingest required.
 
-These questions are chosen to exercise **local Ask tools** (`get_positions`, `get_cd_benchmark_rates`, `liquidity_cross_check`, `compare_roll_options`, calculation tools, etc.). Nothing is sent to external APIs; benchmarks come from curated local defaults.
+These questions are chosen to exercise **local Ask tools** (`get_positions`, `get_cd_benchmark_rates`, `liquidity_cross_check`, `compare_roll_options`, calculation tools, etc.). With **`FRED_API_KEY`** set and Docker Compose running, benchmarks come from **FRED Treasury proxies** via finance-mcp (no user PII sent). Without FRED, benchmarks use curated local defaults or `REFERENCE_CD_RATES`.
 
 **How to tell tools are working**
 
 | Signal | Good | Weak (tools may not have run) |
 |--------|------|-------------------------------|
 | **Numbers** | Uses *your* principals, dates, and obligation amounts (e.g. $25,000, July 2, $1,200 tax) | Generic filler with no figures from your Data |
-| **Benchmarks** | Mentions curated CD tiers (~4.15%–4.35% by term) or your `REFERENCE_CD_RATES` / `REFERENCE_MMF_APR` | Invented “market rates” with no comparison to your holding |
+| **Benchmarks** | Mentions Treasury proxy rates (when `FRED_API_KEY` set), curated tiers (~4.15%–4.35%), or your `REFERENCE_CD_RATES` / `REFERENCE_MMF_APR`; notes proxies are not bank CD offers | Invented “market rates” with no comparison to your holding |
 | **Liquidity** | Says whether maturing principal likely covers nearby bills (±14-day window) | Ignores obligations near maturity |
 | **Roll / renew** | Lists hold, roll, MMF, wait style options tied to a specific CD | Vague “talk to your bank” with no holding context |
 | **Calculations** | States a computed dollar amount for interest/growth | Refuses or guesses without doing the math |
@@ -271,7 +271,7 @@ These questions are chosen to exercise **local Ask tools** (`get_positions`, `ge
 | # | Type this question | Tool(s) exercised | What a good answer should do |
 |---|-------------------|-------------------|------------------------------|
 | F1 | `How much do I have in CDs and how does that compare to current CD benchmarks?` | `get_positions`, `get_cd_benchmark_rates` | Total CD principal from your positions; compare your APY (e.g. 4.85%) to nearest-term benchmark; not a stock quote or invented rate. |
-| F2 | `What is the money market benchmark rate?` | `get_mmf_benchmark` | States curated MMF benchmark (~4.50% unless you changed `REFERENCE_MMF_APR`); does not call Finnhub or guess VMFXX yield. |
+| F2 | `What is the money market benchmark rate?` | `get_mmf_benchmark` | States MMF benchmark (FRED 3-month Treasury proxy when configured, else ~4.50% curated); does not guess VMFXX yield from stock NAV. |
 | F3 | `Do I need the July 2 CD rung to stay liquid for my property tax on July 5?` | `liquidity_cross_check`, `get_obligations` | Cross-check: ~$25k maturing vs ~$1,200 tax; notes ±14-day window; likely “covers” unless you changed amounts. |
 | F4 | `What are my options for the CD maturing July 2, 2026?` | `compare_roll_options`, `get_cd_benchmark_rates` | Structured hold / roll / MMF / wait framing; references your PenFed CD rate and maturity; may note action threshold. |
 | F5 | `Is rolling my 4.85% CD worth it versus the 12-month benchmark?` | `compare_user_rate`, `get_cd_benchmark_rates` | Compares 4.85% to ~12-month benchmark; mentions whether delta is “meaningful” (~0.25%) or small. |
