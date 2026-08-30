@@ -260,6 +260,7 @@ from app.vault_path_validation import validate_vault_root_path
 from app.native_folder_dialog import NativeFolderDialogUnavailable, pick_native_folder
 from app.db_connection import app_db_connection
 from app import llm_client
+from app.image_ingest import extract_image_bytes_for_ingest
 from app.ingest_facts import extract_document_facts
 from app.remote_log import send_remote_log
 from app.ask_trace import AskTraceContext, ask_trace_scope, log_ask_event
@@ -806,8 +807,8 @@ async def ingest_image(request: Request):
     """
     Ingest an image file (JPG or PNG): multipart/form-data with required 'file',
     optional doc_id, title, source, chunk_size, chunk_overlap.
-    Uses LLaVA to extract visible text (e.g. from bank screenshots), then runs
-    the same chunk/embed pipeline as POST /ingest.
+    Uses Tesseract OCR first (vision fallback only when not portable/low_spec),
+    then runs the same chunk/embed pipeline as POST /ingest.
     """
     form = await request.form()
     file = form.get("file")
@@ -827,10 +828,11 @@ async def ingest_image(request: Request):
             status_code=400,
             detail="File must be a JPEG or PNG image.",
         )
+    filename = getattr(file, "filename", None) or "upload.jpg"
     try:
-        image_base64 = base64.b64encode(raw).decode("ascii")
-        filename = getattr(file, "filename", None) or "upload.jpg"
-        text = await llm_client.image_to_text_for_ingest(image_base64, filename_hint=filename)
+        text = await extract_image_bytes_for_ingest(raw, filename_hint=filename)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except (LLMServiceError, LLMRateLimitedError, LLMUpstreamTimeoutError) as e:
         logger.exception("Image text extraction failed", exc_info=e)
         raise HTTPException(status_code=503, detail=str(e)) from e

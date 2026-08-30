@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import logging
 import os
 import time
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -16,7 +14,7 @@ from app.db_connection import app_db_connection
 from app.ingest_jobs import IngestJob, IngestJobKind, IngestJobStatus
 from app.ingest_queue import IngestJobStore
 from app.models import ChunkingOptions
-from app import llm_client
+from app.image_ingest import extract_image_bytes_for_ingest
 
 logger = logging.getLogger(__name__)
 
@@ -132,11 +130,10 @@ async def _run_one_job(app: Any, store: IngestJobStore, job: IngestJob) -> None:
             if not _is_supported_image(raw):
                 raise ValueError("Unsupported image type")
             await progress_cb("extracting", 5.0)
-            image_base64 = base64.b64encode(raw).decode("ascii")
             hint = job.source or job.title or (
                 "upload.pdf" if job.kind == IngestJobKind.PDF else "upload.jpg"
             )
-            text = await llm_client.image_to_text_for_ingest(image_base64, filename_hint=hint)
+            text = await extract_image_bytes_for_ingest(raw, filename_hint=hint)
             text = _strip_nul_bytes((text or "").strip())
             if len(text) < 10:
                 raise ValueError("No text extracted from image")

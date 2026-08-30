@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class IngestJobKind(str, Enum):
@@ -46,4 +51,6 @@ class IngestJob:
     estimated_completion_at: Any = None
     error: str | None = None
     result: dict[str, Any] | None = None
+    created_at: datetime = field(default_factory=_utc_now)
+    updated_at: datetime = field(default_factory=_utc_now)
     _embed_started_at: float | None = field(default=None, repr=False)

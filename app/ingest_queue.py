@@ -15,6 +15,9 @@ class IngestJobStore:
 
     async def add(self, job: IngestJob) -> None:
         async with self._lock:
+            now = datetime.now(timezone.utc)
+            job.created_at = now
+            job.updated_at = now
             self._jobs[job.id] = job
 
     async def get(self, job_id: str) -> IngestJob | None:
@@ -33,6 +36,7 @@ class IngestJobStore:
 
     async def update(self, job: IngestJob) -> None:
         async with self._lock:
+            job.updated_at = datetime.now(timezone.utc)
             self._jobs[job.id] = job
 
     async def pop_next_pending(self) -> IngestJob | None:
@@ -41,6 +45,7 @@ class IngestJobStore:
                 if job.status == IngestJobStatus.PENDING:
                     job.status = IngestJobStatus.RUNNING
                     job.stage = "starting"
+                    job.updated_at = datetime.now(timezone.utc)
                     return job
         return None
 

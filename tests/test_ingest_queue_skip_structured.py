@@ -16,6 +16,19 @@ from app.models import ChunkingOptions
 def test_ingest_job_defaults_skip_structured() -> None:
     job = IngestJob(id="j1", kind=IngestJobKind.PDF, doc_id="d1")
     assert job.skip_structured is True
+    assert job.created_at is not None
+    assert job.updated_at is not None
+
+
+def test_ingest_job_to_response_includes_timestamps() -> None:
+    from app.main import _ingest_job_to_response
+
+    job = IngestJob(id="j1", kind=IngestJobKind.PDF, doc_id="d1", filename="a.pdf")
+    resp = _ingest_job_to_response(job)
+    assert resp.id == "j1"
+    assert resp.status == "pending"
+    assert resp.created_at == job.created_at
+    assert resp.updated_at == job.updated_at
 
 
 class _MockEmbedder:
