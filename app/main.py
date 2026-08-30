@@ -59,6 +59,7 @@ import base64
 import hashlib
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -2134,11 +2135,17 @@ def _open_path_in_os(path: Path) -> None:
     s = str(resolved)
     system = platform.system()
     if system == "Darwin":
-        subprocess.Popen(["open", s], close_fds=True)
+        opener = shutil.which("open")
+        if not opener:
+            raise FileNotFoundError("open")
+        subprocess.Popen([opener, s], close_fds=True)
     elif system == "Windows":
         os.startfile(s)
     else:
-        subprocess.Popen(["xdg-open", s], close_fds=True)
+        opener = shutil.which("xdg-open")
+        if not opener:
+            raise FileNotFoundError("xdg-open")
+        subprocess.Popen([opener, s], close_fds=True)
 
 
 def _resolve_document_original_file_path(conn: Any, doc_id: str) -> Path:
@@ -2173,6 +2180,14 @@ def reveal_document_source(request: Request, doc_id: str):
         p = _resolve_document_original_file_path(conn, doc_id)
     try:
         _open_path_in_os(p)
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                "Cannot open files in the OS from this server (typical in Docker). "
+                "Use Preview to view the file in the browser."
+            ),
+        ) from e
     except OSError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
     return Response(status_code=204)

@@ -38,12 +38,17 @@
     }
     header {
       display: flex;
-      align-items: center;
-      gap: 1rem;
-      flex-wrap: wrap;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.75rem;
       padding-bottom: 1rem;
       border-bottom: 1px solid var(--border);
       margin-bottom: 1.5rem;
+    }
+    .header-top {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
     }
     h1 {
       font-size: 1.25rem;
@@ -56,7 +61,10 @@
       color: var(--accent);
       text-decoration: none;
       white-space: nowrap;
-      margin-right: 0.5rem;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0.35rem 0.5rem;
     }
     .header-help:hover {
       text-decoration: underline;
@@ -64,13 +72,15 @@
     }
     .tabs {
       display: flex;
-      gap: 0.25rem;
+      gap: 0.5rem;
+      width: 100%;
     }
     .tabs button {
-      padding: 0.4rem 0.75rem;
+      flex: 1 1 0;
+      padding: 0.4rem 0.5rem;
       background: transparent;
       border: 1px solid var(--border);
-      border-radius: 6px;
+      border-radius: 8px;
       color: var(--text);
       cursor: pointer;
       font-size: 0.9rem;
@@ -82,6 +92,10 @@
       background: var(--accent);
       border-color: var(--accent);
       color: var(--on-accent);
+    }
+    :focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 2px;
     }
     .panel {
       display: none;
@@ -213,7 +227,7 @@
 
     .start-here-banner {
       position: relative;
-      padding: 0.85rem 2.25rem 0.85rem 1rem;
+      padding: 0.85rem 1rem 1rem;
       margin-bottom: 1.25rem;
       font-size: var(--text-help-lg);
       line-height: 1.45;
@@ -224,21 +238,20 @@
     .start-here-banner[hidden] { display: none !important; }
     .start-here-banner a { color: var(--accent); }
     .start-here-dismiss {
-      position: absolute;
-      top: 0.35rem;
-      right: 0.35rem;
-      width: 1.75rem;
-      height: 1.75rem;
-      padding: 0;
-      border: none;
-      background: transparent;
-      color: var(--text-muted);
-      font-size: 1.25rem;
-      line-height: 1;
+      display: block;
+      margin-top: 0.75rem;
+      min-height: 48px;
+      width: 100%;
+      max-width: 16rem;
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 1rem;
       cursor: pointer;
-      border-radius: 4px;
+      border-radius: 8px;
     }
-    .start-here-dismiss:hover { color: var(--text); background: rgba(0, 0, 0, 0.04); }
+    .start-here-dismiss:hover { border-color: var(--accent); color: var(--accent); }
 
     .doc-list { list-style: none; padding: 0; margin: 0; }
     .doc-item {
@@ -285,7 +298,8 @@
     .data-table .actions { white-space: nowrap; }
     .btn-edit, .btn-delete {
       padding: 0.25rem 0.5rem;
-      margin-right: 0.25rem;
+      margin-right: 0.5rem;
+      margin-bottom: 0.35rem;
       font-size: 0.8rem;
       border-radius: 4px;
       cursor: pointer;
@@ -309,12 +323,27 @@
     .data-form-inline #documents-edit-cancel:hover { background: var(--bg); }
     .field-hint { display: block; font-size: var(--text-help); color: var(--text-muted); margin-top: 0.25rem; margin-bottom: 0.4rem; }
     .ingest-text-details { margin-top: 1rem; }
-    .ingest-text-details summary { cursor: pointer; color: var(--text-muted); font-size: 0.9rem; }
+    .ingest-text-details summary {
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      padding: 0.35rem 0;
+    }
     .ingest-text-details summary:hover { color: var(--text); }
     .ingest-text-details[open] summary { margin-bottom: 1rem; }
     .ingest-text-details[open] label { margin-top: 0; display: block; }
     .ingest-create-account-wrap { margin-top: 0.5rem; margin-bottom: 1rem; }
-    .ingest-create-account-wrap summary { cursor: pointer; color: var(--text-muted); font-size: 0.9rem; }
+    .ingest-create-account-wrap summary {
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+    }
     .ingest-create-account-wrap summary:hover { color: var(--text); }
     .ingest-create-account-wrap[open] summary { margin-bottom: 0.5rem; }
     .doc-facts { font-size: 0.85rem; max-width: 18rem; }
@@ -472,10 +501,38 @@
     }
     .ask-followup-actions {
       display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      align-items: center;
+      flex-direction: column;
+      gap: 0.75rem;
+      align-items: stretch;
       margin-top: 0.5rem;
+    }
+    #btn-ask-followup {
+      min-height: 48px;
+      padding: 0.75rem 1.25rem;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: var(--on-accent);
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    #btn-ask-followup:hover { background: var(--accent-hover); }
+    button.secondary,
+    #btn-ask-new-conversation {
+      min-height: 48px;
+      padding: 0.65rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    button.secondary:hover,
+    #btn-ask-new-conversation:hover {
+      border-color: var(--accent);
+      color: var(--accent);
     }
     .ask-history-followup {
       margin: 0.5rem 0 0 0.75rem;
@@ -693,7 +750,10 @@
     body.easy-ui .ask-preset-chip,
     body.easy-ui .home-confirm-btn,
     body.easy-ui .easy-modal-actions button,
-    body.easy-ui #btn-ask-mic {
+    body.easy-ui #btn-ask-mic,
+    body.easy-ui #btn-ask-followup,
+    body.easy-ui #btn-ask-new-conversation,
+    body.easy-ui .start-here-dismiss {
       min-height: 48px;
       padding: 0.75rem 1.25rem;
       font-size: 1rem;
@@ -709,6 +769,8 @@
       min-height: 44px;
       padding: 0.5rem 0.85rem;
       font-size: 0.95rem;
+      margin-right: 0.65rem;
+      margin-bottom: 0.5rem;
     }
     .home-card {
       background: var(--surface);
@@ -833,66 +895,77 @@
     .manage-section.active { display: block; }
     .ask-presets {
       display: flex;
-      flex-wrap: nowrap;
-      gap: 0.5rem;
+      flex-wrap: wrap;
+      gap: 0.65rem;
       margin: 0.75rem 0 1rem;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: thin;
-      padding-bottom: 0.25rem;
     }
     .ask-preset-chip {
-      flex-shrink: 0;
-      white-space: nowrap;
+      flex: 1 1 calc(50% - 0.65rem);
+      min-width: 9rem;
+      white-space: normal;
+      text-align: center;
       padding: 0.5rem 1rem;
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 999px;
+      border-radius: 10px;
       cursor: pointer;
       color: var(--text);
+      line-height: 1.3;
     }
     .ask-preset-chip:hover { border-color: var(--accent); color: var(--accent); }
-    .ask-actions-row {
+    .ask-actions-stack {
       display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 0.75rem;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.85rem;
       margin-top: 0.25rem;
     }
     .ask-options-group {
       display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 0.5rem 1rem;
-      flex: 1;
-      justify-content: center;
-      min-width: 0;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.5rem;
     }
     .ask-options-group .ask-action-details {
       margin: 0;
     }
-    .ask-action-details summary {
-      white-space: nowrap;
-    }
-    .ask-options-group .ask-action-details[open] {
-      flex-basis: 100%;
-    }
     .ask-action-details[open] summary {
       margin-bottom: 0.5rem;
     }
-    .ask-mic-group {
+    .ask-checkbox-label {
       display: flex;
-      flex-wrap: wrap;
       align-items: center;
       gap: 0.75rem;
+      min-height: 48px;
+      padding: 0.35rem 0;
+      cursor: pointer;
+      font-size: 1rem;
+      color: var(--text);
+    }
+    .ask-checkbox-label input[type="checkbox"] {
+      width: 1.5rem;
+      height: 1.5rem;
+      min-width: 1.5rem;
+      margin: 0;
+      flex-shrink: 0;
+      accent-color: var(--accent);
+    }
+    .ask-mic-group {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.5rem;
     }
     .ask-mic-group .field-hint {
       margin: 0;
     }
-    @media (min-width: 600px) {
-      .ask-actions-row {
-        justify-content: space-between;
-      }
+    #btn-ask-mic {
+      width: 100%;
+    }
+    #btn-ask-submit {
+      width: 100%;
+      justify-content: center;
+      margin-top: 0.25rem;
     }
     @keyframes ask-btn-spin {
       to { transform: rotate(360deg); }
@@ -900,6 +973,7 @@
     #btn-ask-submit.is-loading {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 0.5rem;
     }
     #btn-ask-submit.is-loading::after {
@@ -1000,8 +1074,10 @@
   </div>
   <div class="layout">
     <header>
-      <h1>Ledgerly</h1>
-      <a href="help.html" class="header-help">How to use</a>
+      <div class="header-top">
+        <h1>Ledgerly</h1>
+        <a href="help.html" class="header-help">How to use</a>
+      </div>
       <nav class="tabs">
         <button type="button" data-tab="home" class="active">Home</button>
         <button type="button" data-tab="ingest">Add document</button>
@@ -1011,8 +1087,8 @@
     </header>
 
     <section id="start-here-banner" class="start-here-banner" hidden>
-      <button type="button" class="start-here-dismiss" id="start-here-dismiss" aria-label="Dismiss start here tip">×</button>
       <p><strong>Start here:</strong> Open <strong>Home</strong> to see maturities. To add a document, go to <strong>Add document</strong>, drop files, click <strong>Ingest</strong>, then tap <strong>Yes, track this</strong> if Ledgerly finds a date to track. <a href="help.html">How to use</a>.</p>
+      <button type="button" class="start-here-dismiss" id="start-here-dismiss">Dismiss this tip</button>
     </section>
 
     <section id="panel-home" class="panel active">
@@ -1257,8 +1333,7 @@
         <form id="form-ask">
           <label for="ask-question">Question (optional if you use a preset above)</label>
           <textarea id="ask-question" name="question" rows="4" placeholder="Or type your question here…"></textarea>
-          <div class="ask-actions-row">
-            <button type="submit" id="btn-ask-submit">Ask</button>
+          <div class="ask-actions-stack">
             <div class="ask-options-group">
               <details class="ingest-text-details ask-action-details">
                 <summary>Limit to one document (optional)</summary>
@@ -1270,13 +1345,14 @@
               <details id="ask-stream-now-details" class="ingest-text-details ask-action-details" hidden>
                 <summary>Answer now (uses more CPU)</summary>
                 <p class="field-hint">Stream an answer immediately instead of the background queue. Best when no documents are ingesting.</p>
-                <label><input type="checkbox" id="ask-use-stream" /> Use immediate streaming</label>
+                <label class="ask-checkbox-label" for="ask-use-stream"><input type="checkbox" id="ask-use-stream" /> Use immediate streaming</label>
               </details>
             </div>
             <div class="ask-mic-group">
               <span id="ask-mic-status" class="field-hint" hidden>Listening…</span>
               <button type="button" id="btn-ask-mic">Speak question</button>
             </div>
+            <button type="submit" id="btn-ask-submit">Ask</button>
           </div>
         </form>
         <div id="ask-loading" class="message loading" hidden><span class="slow-wait-text">Working…</span></div>
@@ -2420,18 +2496,8 @@
         openDocumentOriginalPreview(docId);
       }
       function openDocumentSourceInOS(docId) {
-        fetch(getApiBase() + '/documents/' + encodeURIComponent(docId) + '/reveal-source', { method: 'POST' })
-          .then(function (r) {
-            if (r.status === 204) return null;
-            return r.json().then(function (data) {
-              var det = data.detail;
-              var msg = typeof det === 'string' ? det : (det ? JSON.stringify(det) : r.statusText);
-              throw new Error(msg || 'Open failed');
-            });
-          })
-          .catch(function (err) {
-            window.alert('Could not open file. ' + formatFetchError(err));
-          });
+        // Docker has no macOS `open` / xdg-open. Stream the original in the browser instead.
+        openDocumentOriginalPreview(docId);
       }
       function appendDocumentOriginalActions(container, docId, meta, opts) {
         if (!container || !docId) return false;
