@@ -14,7 +14,7 @@ from app import cpu_defaults
         (2, 1),
         (4, 2),
         (8, 4),
-        (16, 8),
+        (16, 4),
     ],
 )
 def test_default_ollama_num_threads(monkeypatch: pytest.MonkeyPatch, cpus: int, expected: int) -> None:

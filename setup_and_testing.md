@@ -29,7 +29,9 @@ ollama pull llava:7b
 
 Large PDF ingests use batched calls to Ollama (`EMBED_BATCH_SIZE`, default 32) with `EMBED_TIMEOUT` (default 120s) per batch—tune in `.env` if you still see timeouts or want smaller requests.
 
-**Queued multi-file ingest:** Upload multiple PDFs/images in one go via **POST /ingest/jobs** (the Ingest UI uses this when you select more than one file). Jobs run **one at a time** in the background; tune `INGEST_QUEUE_INTER_JOB_SLEEP_SEC` and `EMBED_INTER_BATCH_SLEEP_SEC` in `.env`. Poll **GET /ingest/jobs** (the UI refreshes about every **60s** per `INGEST_UI_POLL_INTERVAL_SEC`). The in-memory queue does **not** survive a server restart.
+**Queued multi-file ingest:** Upload multiple PDFs/images in one go via **POST /ingest/jobs** (the Ingest UI uses this when you select more than one file). Jobs run **one at a time** in the background; tune `INGEST_QUEUE_INTER_JOB_SLEEP_SEC` and `EMBED_INTER_BATCH_SLEEP_SEC` in `.env`. Queued file jobs **skip structured LLM** extraction (documents still embed for Ask; track fields can be filled later). Poll **GET /ingest/jobs** (the UI uses `ingest_ui_poll_interval_sec` from **GET /health**, default **5s**). The in-memory queue does **not** survive a server restart.
+
+**Docker Desktop (Mac/Windows) thermals:** Compose caps the `ollama` service at **2 CPUs / 4g** and `ledgerly` at **1.5 CPUs / 2g**, with `OLLAMA_NUM_THREADS` default **2**. Multi-file ingest is intentionally slower so the Docker VM cannot peg every host core. Use `LEDGERLY_PROFILE=portable` (see [`.env.portable-xps15.example`](.env.portable-xps15.example)) for longer pauses between embed batches and jobs. Quit Docker Desktop when idle if fans matter.
 
 ### Vision, OCR, and memory (what users do vs what admins configure)
 
@@ -39,7 +41,7 @@ Large PDF ingests use batched calls to Ollama (`EMBED_BATCH_SIZE`, default 32) w
 
 **Portable / low-spec profile:** Set **`LEDGERLY_PROFILE=portable`** or **`LEDGERLY_PROFILE=low_spec`** in `.env` and **omit `LLAVA_MODEL`** (or leave it commented) to use the built-in smaller default (`moondream`). Run `ollama pull moondream` once. If you explicitly set `LLAVA_MODEL`, that value always wins.
 
-**Target PC (Dad's Dell XPS 15 9530):** Full specs and thermal-safe defaults are in [`docs/target-pc-dad-xps15.md`](docs/target-pc-dad-xps15.md). Copy [`.env.portable-xps15.example`](.env.portable-xps15.example) to `.env` (portable ZIP `Setup.bat` does this automatically when no `.env` exists). On Windows, **`Start.bat`** pulls `qwen2.5:3b` + `moondream` when the portable profile is set; set **`OLLAMA_NUM_THREADS=4`** explicitly for cooler operation than auto-detect (which can cap at 8 on a 20-thread CPU).
+**Target PC (Dad's Dell XPS 15 9530):** Full specs and thermal-safe defaults are in [`docs/target-pc-dad-xps15.md`](docs/target-pc-dad-xps15.md). Copy [`.env.portable-xps15.example`](.env.portable-xps15.example) to `.env` (portable ZIP `Setup.bat` does this automatically when no `.env` exists). On Windows, **`Start.bat`** pulls `qwen2.5:3b` + `moondream` when the portable profile is set; set **`OLLAMA_NUM_THREADS=2`** (Compose default) or at most **4** for cooler operation than auto-detect (which caps at **4**).
 
 **Troubleshooting only (admins):** If ingest still fails with Ollama errors about **system memory** or **VRAM**, check that Tesseract OCR is installed so PDFs can use OCR instead of vision; confirm `ollama pull` succeeded for `LLAVA_MODEL`; try a smaller vision model; optionally check `ollama ps` to see which models are loaded. Reducing concurrent heavy GPU use is a last resort, not a daily user workflow.
 
@@ -105,7 +107,7 @@ Compose includes an internal **Postgres 16 + pgvector** service (not published o
 2. **Windows:** Double-click **`Start.bat`** or run `Start.bat` from a terminal. The script starts the containers, waits for Ollama, pulls the models (one-time), then opens http://localhost:8000/ in your browser.
 3. **Mac/Linux:** Run `./start.sh`. Then open **http://localhost:8000/** in your browser.
 
-`start.sh` auto-sets `OLLAMA_NUM_THREADS` from your CPU count when it is not already in `.env` (conservative default to reduce fan noise). Set `OLLAMA_NUM_THREADS` explicitly to override.
+`start.sh` auto-sets `OLLAMA_NUM_THREADS` from your CPU count when it is not already in `.env` (conservative: ~half cores, cap **4**). Compose defaults to **2** when unset. Set `OLLAMA_NUM_THREADS` explicitly to override.
 
 First run may take **much longer** than later runs (Docker images plus several gigabytes of Ollama models). **Later starts** are usually on the order of a few minutes once everything is cached; **daily use** after that is mostly startup time for containers, not re-downloads. For a plain-language table of what to expect (useful when handing the ZIP or installer to someone else), see **`install-instructions.md`** in the project root.
 

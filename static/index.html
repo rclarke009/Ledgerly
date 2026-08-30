@@ -1156,6 +1156,7 @@
           <div id="ingest-queue-actions" class="ingest-queue-actions">
             <p id="ingest-queue-selection-hint" class="field-hint" hidden></p>
             <button type="button" id="ingest-queue-start" disabled>Ingest</button>
+            <p id="ingest-queue-cool-hint" class="field-hint ingest-queue-cool-hint" hidden>Cooling between files — CPU is capped; this is slower on purpose.</p>
             <p class="field-hint ingest-queue-persist-hint">Progress is not saved if you close this page — re-select files to try again.</p>
           </div>
           <details id="ingest-text-details" class="ingest-text-details">
@@ -1768,6 +1769,9 @@
           .then(function (data) {
             if (data && data.healthy === true) {
               if (data.ask_mode) askMode = data.ask_mode;
+              if (typeof data.ingest_ui_poll_interval_sec === 'number' && data.ingest_ui_poll_interval_sec > 0) {
+                window.__ledgerlyIngestPollMs = Math.max(2000, Math.round(data.ingest_ui_poll_interval_sec * 1000));
+              }
               applyAskModeUi();
               completeStartupOk();
             } else {
@@ -3285,12 +3289,32 @@
       var INGEST_QUEUE_MAX = 10;
       var INGEST_QUEUE_POLL_MS = 5000;
       var ingestQueueEnqueuing = false;
+      var ingestQueueCoolHint = document.getElementById('ingest-queue-cool-hint');
       var ingestQueueSession = {
         items: [],
         pollTimer: null,
         nextLocalId: 1,
         dashboardRefreshedFor: {}
       };
+      function getIngestQueuePollMs() {
+        if (typeof window.__ledgerlyIngestPollMs === 'number' && window.__ledgerlyIngestPollMs > 0) {
+          return window.__ledgerlyIngestPollMs;
+        }
+        return INGEST_QUEUE_POLL_MS;
+      }
+      function updateIngestQueueCoolHint() {
+        if (!ingestQueueCoolHint) return;
+        var items = ingestQueueSession.items || [];
+        var busy = ingestQueueEnqueuing;
+        for (var i = 0; i < items.length; i++) {
+          var st = items[i].status;
+          if (st === 'pending' || st === 'running' || !st) {
+            busy = true;
+            break;
+          }
+        }
+        ingestQueueCoolHint.hidden = !busy;
+      }
       function clearIngestUiMessage() {
         var m = document.getElementById('ingest-message');
         if (!m) return;
@@ -3458,9 +3482,11 @@
             ingestQueueSummary.textContent = 'Finished — ' + done + ' succeeded' + (failed ? ', ' + failed + ' failed' : '') + '.';
           } else {
             ingestQueueSummary.textContent = 'Processing ' + items.length + ' file' + (items.length === 1 ? '' : 's')
-              + ' — ' + done + ' done' + (failed ? ', ' + failed + ' failed so far' : '') + '.';
+              + ' — ' + done + ' done' + (failed ? ', ' + failed + ' failed so far' : '')
+              + '. Cooling between files — CPU is capped; this is slower on purpose.';
           }
         }
+        updateIngestQueueCoolHint();
         if (ingestQueueHomeFollowup) {
           ingestQueueHomeFollowup.innerHTML = '';
           if (allTerminal && successResults.length) {
@@ -3498,7 +3524,11 @@
           var statusEl = document.createElement('div');
           statusEl.className = 'ingest-queue-item-status';
           if (item.status === 'success') {
-            statusEl.textContent = 'Done' + (item.result && item.result.doc_id ? ' — ' + item.result.doc_id : '');
+            var doneLine = 'Done' + (item.result && item.result.doc_id ? ' — ' + item.result.doc_id : '');
+            if (item.result && item.result.structured_skipped) {
+              doneLine += ' — track fields can be filled later';
+            }
+            statusEl.textContent = doneLine;
           } else if (item.status === 'failed') {
             statusEl.textContent = 'Failed' + (item.error ? ' — ' + item.error : '');
           } else if (item.status === 'running') {
@@ -3537,9 +3567,10 @@
             }
             if (allDone) {
               stopIngestQueuePoll();
+              updateIngestQueueCoolHint();
               return;
             }
-            ingestQueueSession.pollTimer = setTimeout(pollIngestQueue, INGEST_QUEUE_POLL_MS);
+            ingestQueueSession.pollTimer = setTimeout(pollIngestQueue, getIngestQueuePollMs());
           })
           .catch(function (err) {
             var msg = document.getElementById('ingest-message');
@@ -3548,7 +3579,7 @@
               msg.className = 'message error';
               msg.hidden = false;
             }
-            ingestQueueSession.pollTimer = setTimeout(pollIngestQueue, INGEST_QUEUE_POLL_MS);
+            ingestQueueSession.pollTimer = setTimeout(pollIngestQueue, getIngestQueuePollMs());
           });
       }
 
@@ -3588,6 +3619,7 @@
         }
         ingestQueueEnqueuing = true;
         updateIngestQueueSelectionUi();
+        updateIngestQueueCoolHint();
         var fd = buildIngestJobFormData(batch, form);
         fetch(getApiBase() + '/ingest/jobs', { method: 'POST', body: fd })
           .then(function (res) { return res.json().then(function (data) { return { res: res, data: data }; }); })
@@ -3598,6 +3630,7 @@
               msg.className = 'message error';
               msg.hidden = false;
               updateIngestQueueSelectionUi();
+              updateIngestQueueCoolHint();
               return;
             }
             var jobs = o.data.jobs || [];
@@ -3628,6 +3661,7 @@
             msg.className = 'message error';
             msg.hidden = false;
             updateIngestQueueSelectionUi();
+            updateIngestQueueCoolHint();
           });
       }
 

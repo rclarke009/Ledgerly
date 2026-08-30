@@ -53,3 +53,4 @@ Tech: **FastAPI**, **Pydantic**, async HTTP clients for embeddings and LLM calls
 
 - Hardening: caching, observability, optional API auth for exposed deployments.
 - Deeper financial tooling and clearer empty states when optional services (e.g. market quotes) are unavailable.
+- Product ideas (not Version 1): estate planning and nursing-home / Medicaid-eligibility awareness — see **Features wishlist** in [FINANCIAL-ASSISTANT.md](FINANCIAL-ASSISTANT.md).

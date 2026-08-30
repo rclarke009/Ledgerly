@@ -33,20 +33,36 @@ EMBED_MAX_ATTEMPTS = int(os.getenv("EMBED_MAX_ATTEMPTS", 3))
 EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "32"))
 # Vector dimension for EMBED_MODEL (nomic-embed-text = 768).
 EMBED_DIM = int(os.getenv("EMBED_DIM", "768"))
-# Pause after each embed batch (seconds); spreads CPU load. 0 = no pause.
-EMBED_INTER_BATCH_SLEEP_SEC = float(os.getenv("EMBED_INTER_BATCH_SLEEP_SEC", "0"))
 # SQLite retrieval: max embedding rows scored in Python (0 = no cap). Postgres uses pgvector.
 SQLITE_RETRIEVAL_MAX_EMBEDDINGS = int(os.getenv("SQLITE_RETRIEVAL_MAX_EMBEDDINGS", "5000"))
-# Background ingest queue: pause between jobs (seconds).
-INGEST_QUEUE_INTER_JOB_SLEEP_SEC = float(os.getenv("INGEST_QUEUE_INTER_JOB_SLEEP_SEC", "3"))
-# UI hint only: suggested poll interval for job status (seconds).
-INGEST_UI_POLL_INTERVAL_SEC = int(os.getenv("INGEST_UI_POLL_INTERVAL_SEC", "60"))
+# UI hint: suggested poll interval for job status (seconds). Exposed on GET /health.
+INGEST_UI_POLL_INTERVAL_SEC = int(os.getenv("INGEST_UI_POLL_INTERVAL_SEC", "5"))
 
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434")
 
 
 def _portable_profile() -> str:
     return os.getenv("LEDGERLY_PROFILE", "").strip().lower()
+
+
+def default_embed_inter_batch_sleep(profile: str) -> str:
+    """Env default for EMBED_INTER_BATCH_SLEEP_SEC when the var is unset."""
+    return "1" if profile in ("portable", "low_spec") else "0"
+
+
+def default_ingest_queue_sleep(profile: str) -> str:
+    """Env default for INGEST_QUEUE_INTER_JOB_SLEEP_SEC when the var is unset."""
+    return "8" if profile in ("portable", "low_spec") else "3"
+
+
+# Pause after each embed batch (seconds); spreads CPU load. Portable defaults to 1s.
+EMBED_INTER_BATCH_SLEEP_SEC = float(
+    os.getenv("EMBED_INTER_BATCH_SLEEP_SEC", default_embed_inter_batch_sleep(_portable_profile()))
+)
+# Background ingest queue: pause between jobs (seconds). Portable defaults to 8s.
+INGEST_QUEUE_INTER_JOB_SLEEP_SEC = float(
+    os.getenv("INGEST_QUEUE_INTER_JOB_SLEEP_SEC", default_ingest_queue_sleep(_portable_profile()))
+)
 
 
 def _resolve_llm_model() -> str:

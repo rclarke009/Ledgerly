@@ -29,6 +29,18 @@ Ledgerly is a **private cash-management assistant** focused on taxable CD ladder
 - Autonomous “always-on” coaching or churn recommendations
 - Tax or legal advice (awareness only)
 
+## Features wishlist (later — not Version 1)
+
+Ideas to keep, not a commitment to build next. Version 1 stays CD ladder / safe cash. Anything here that touches law or eligibility is **awareness and checklists only** — not advice.
+
+### Estate planning and nursing-home / long-term care
+
+Help the user plan **before** they, or someone they care for (spouse, parent, other), may need a nursing home or similar long-term care.
+
+- **Why it matters:** In the US, Medicaid (and similar programs) often will not cover nursing-home care while substantial assets remain in the person’s own name. Families typically must spend down, retitle, or otherwise arrange assets so benefits can start. Transfers are commonly subject to a **look-back period** (often years), so last-minute moves can delay or deny benefits. Planning for **self** and for **others** is a different workflow (whose money, whose name, whose documents).
+- **Product angle:** Track people, documents (will, POA, trust papers), and “talk to an elder-law attorney by …” dates. Surface that ownership/titling may block benefits. Do **not** recommend specific transfers, trusts, or state-rule interpretations.
+- **Possible later work:** self vs. others profiles; asset-ownership / titling notes on accounts; look-back / planning-horizon reminders; ingest of estate and care documents; a checklist of topics to raise with an attorney.
+
 ## Operating tables
 
 | Table | Purpose |

@@ -38,6 +38,8 @@ class IngestJob:
     text_content: str | None = None
     pdf_text_mode: str = "auto"
     keep_incoming_original_rel: str | None = None
+    # Background file queue skips structured LLM to keep Docker/laptop CPUs cooler.
+    skip_structured: bool = True
     stage: str = "queued"
     progress_pct: float = 0.0
     eta_seconds: int | None = None

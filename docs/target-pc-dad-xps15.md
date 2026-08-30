@@ -40,13 +40,19 @@ See [`.env.portable-xps15.example`](../.env.portable-xps15.example) for the full
 | Variable | Value | Purpose |
 |----------|--------|---------|
 | `LEDGERLY_PROFILE` | `portable` | `qwen2.5:3b`, `moondream`, queued Ask |
-| `OLLAMA_NUM_THREADS` | `4` | Cap CPU threads (explicit; cooler than auto-detect max of 8 on 20-thread CPU) |
+| `OLLAMA_NUM_THREADS` | `2` | Cap CPU threads (matches Compose `ollama` cpus: 2.0; auto-detect caps at 4) |
 | `OLLAMA_MAX_CONCURRENT` | `1` | Serial Ollama HTTP calls |
 | `LLM_INTER_CALL_SLEEP_SEC` | `2` | Pause between prep LLM steps in Ask |
 | `ASK_QUEUE_INTER_JOB_SLEEP_SEC` | `5` | Pause between queued questions |
+| `INGEST_QUEUE_INTER_JOB_SLEEP_SEC` | `8` | Pause between multi-file ingest jobs |
+| `EMBED_INTER_BATCH_SLEEP_SEC` | `1` | Pause between embed batches within a job |
 | `OLLAMA_WARMUP_ENABLED` | `false` | Less idle heat when switching tabs |
 
 Do **not** set `LLM_MODEL` or `LLAVA_MODEL` — portable defaults apply.
+
+Compose also hard-caps containers: **ollama** `cpus: 2.0` / `mem_limit: 4g`, **ledgerly** `cpus: 1.5` / `mem_limit: 2g`, so Docker Desktop cannot peg every host core during multi-file ingest. Queued file jobs skip structured LLM (docs still embed for Ask).
+
+**Mac (and other Docker Desktop hosts):** Use the same portable `.env` knobs. Expect slower multi-file batches on purpose. Quit Docker Desktop when idle if fans matter.
 
 ## Verify after start
 
@@ -60,7 +66,7 @@ Expect: `"ask_mode":"queued"`, `"profile":"portable"`.
 docker compose exec ollama printenv OLLAMA_NUM_THREADS
 ```
 
-Expect: `4`.
+Expect: `2`.
 
 ## User tips (PDF ingest)
 

@@ -236,6 +236,7 @@ from app.config import (
     INGEST_FACTS_ENABLED,
     INGEST_STRUCTURED_ENABLED,
     INGEST_AUTO_TRACK_ENABLED,
+    INGEST_UI_POLL_INTERVAL_SEC,
     METRICS_ENABLED,
     RERANK_ENABLED,
     RERANK_INITIAL_K_MAX,
@@ -480,6 +481,7 @@ async def ingest_text(
     vault_text_utf8_snapshot: bytes | None = None,
     persist_normalized_text_snapshot: bool = True,
     canonical_original_vault_rel: str | None = None,
+    skip_structured: bool = False,
 ) -> IngestResponse:
     """
     Shared ingest: chunk text, insert document + chunks, embed, insert embeddings, commit.
@@ -604,7 +606,7 @@ async def ingest_text(
         set_document_linked_account(conn, doc_id, account_id)
     extracted_for_response: ExtractedPosition | None = None
     extracted_obligation_for_response: ExtractedObligation | None = None
-    if INGEST_STRUCTURED_ENABLED:
+    if INGEST_STRUCTURED_ENABLED and not skip_structured:
         await _maybe_progress("structured", 90.0)
         try:
             extracted_dict = await extract_structured_position(normalized, title)
@@ -621,6 +623,8 @@ async def ingest_text(
                     extracted_obligation_for_response = ExtractedObligation(**obl_dict)
             except Exception as e:
                 logger.warning("ingest obligation structured: skipped due to error: %s", e)
+    elif skip_structured:
+        logger.info("ingest structured: skipped for queued job doc_id=%s", doc_id)
 
     auto_tracked_position = None
     auto_tracked_obligation = None
@@ -2872,7 +2876,12 @@ def health(response: Response):
     # Allow file:// starting.html to poll readiness during Windows Start.bat bootstrap.
     response.headers["Access-Control-Allow-Origin"] = "*"
     ask_mode = "queued" if _is_portable_profile() else "stream"
-    return {"healthy": True, "ask_mode": ask_mode, "profile": _portable_profile() or "default"}
+    return {
+        "healthy": True,
+        "ask_mode": ask_mode,
+        "profile": _portable_profile() or "default",
+        "ingest_ui_poll_interval_sec": INGEST_UI_POLL_INTERVAL_SEC,
+    }
 
 
 @app.post("/warmup/ask", response_model=WarmupResponse)

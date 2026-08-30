@@ -157,6 +157,7 @@ async def _run_one_job(app: Any, store: IngestJobStore, job: IngestJob) -> None:
                 vault_original=vault_original,
                 persist_normalized_text_snapshot=persist_snap,
                 canonical_original_vault_rel=canonical_original_vault_rel,
+                skip_structured=job.skip_structured,
             )
         except DuplicateContentError as e:
             job.status = IngestJobStatus.FAILED
@@ -197,6 +198,7 @@ async def _run_one_job(app: Any, store: IngestJobStore, job: IngestJob) -> None:
             "source": resp.source,
             "original_vault_path": resp.original_vault_path,
             "has_openable_original": resp.has_openable_original,
+            "structured_skipped": bool(job.skip_structured),
         }
         await store.update(job)
 

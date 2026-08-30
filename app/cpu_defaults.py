@@ -14,11 +14,11 @@ def available_cpu_count() -> int:
 
 
 def default_ollama_num_threads() -> int:
-    """Conservative llama.cpp thread count: ~half cores, leave headroom, cap at 8."""
+    """Conservative llama.cpp thread count: ~half cores, leave headroom, cap at 4."""
     cpus = available_cpu_count()
     if cpus <= 2:
         return 1
-    return max(1, min(cpus // 2, cpus - 1, 8))
+    return max(1, min(cpus // 2, cpus - 1, 4))
 
 
 if __name__ == "__main__":

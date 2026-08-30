@@ -108,14 +108,14 @@ Manual API and Ask-tab walkthroughs: [test_plan.md](test_plan.md), [docs/decisio
 | Observability stack (metrics, dashboards, structured ask traces) | ✅ (optional `--profile observability`) |
 | Optional FRED Treasury benchmarks + Finnhub quotes via finance-mcp | ✅ (needs `FRED_API_KEY` / `FINNHUB_API_KEY`) |
 
-**Roadmap:** API auth for exposed deployments, response caching, deeper empty states when optional services are offline. See [overview.md](overview.md).
+**Roadmap:** API auth for exposed deployments, response caching, deeper empty states when optional services are offline. Later product ideas (estate planning, nursing-home benefit eligibility) are in the features wishlist in [FINANCIAL-ASSISTANT.md](FINANCIAL-ASSISTANT.md). See [overview.md](overview.md).
 
 ---
 
 ## Design tradeoffs
 
 - **No hosted demo** — Financial documents stay local by design. Clone and run, or use the copy-paste demo data above.
-- **CPU and thermals** — Local LLM inference in Docker can run warm on laptops. Use `LEDGERLY_PROFILE=portable`, lower `OLLAMA_NUM_THREADS`, and queued Ask to prioritize quiet operation over speed. Details: [docs/target-pc-dad-xps15.md](docs/target-pc-dad-xps15.md), [.env.portable-xps15.example](.env.portable-xps15.example).
+- **CPU and thermals** — Local LLM inference in Docker can run warm on laptops. Use `LEDGERLY_PROFILE=portable`, lower `OLLAMA_NUM_THREADS` (Compose defaults to 2 with CPU caps on `ollama`/`ledgerly`), and queued Ask to prioritize quiet operation over speed. Details: [docs/target-pc-dad-xps15.md](docs/target-pc-dad-xps15.md), [.env.portable-xps15.example](.env.portable-xps15.example).
 - **In-memory job queues** — Background ingest/ask queues do not survive a server restart (by design for simplicity).
 
 ---
