@@ -76,9 +76,7 @@ Then open **http://localhost:8000/**. Without the model pulls, Ask and ingest wi
 
 ## Try the demo flow
 
-After the app is up, [setup_and_testing.md](setup_and_testing.md) includes a **Real data pack** — paste sample CD and bill notices, enter ladder data, then run Ask questions like *"Do I need the July 2 CD rung to stay liquid for my property tax on July 5?"*
-
-Sample document text: [docs/sample-cd-maturity-letter.md](docs/sample-cd-maturity-letter.md), [docs/sample-bill-reminder.md](docs/sample-bill-reminder.md)
+After the app is up, drop the mock PDFs from [example-kit/](example-kit/) onto **Add document** and follow the two scenarios in [example-kit/README.md](example-kit/README.md). Developers can also paste the longer [Real data pack](setup_and_testing.md#real-data-pack-copy-paste) in [setup_and_testing.md](setup_and_testing.md).
 
 ---
 
@@ -128,6 +126,7 @@ Manual API and Ask-tab walkthroughs: [test_plan.md](test_plan.md), [docs/decisio
 | Developers | [setup_and_testing.md](setup_and_testing.md), [.env.example](.env.example) |
 | End users (Windows portable) | [install-instructions.md](install-instructions.md), [installer/README.md](installer/README.md) |
 | Product & privacy | [FINANCIAL-ASSISTANT.md](FINANCIAL-ASSISTANT.md) |
+| End-user demo PDFs | [example-kit/](example-kit/) |
 | In-app help | [static/help.html](static/help.html) |
 | Supabase remote logging (optional) | [supabase/README.md](supabase/README.md) |
 

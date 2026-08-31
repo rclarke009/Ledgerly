@@ -66,7 +66,7 @@ For developers or manual Docker use, see **setup_and_testing.md** in the same fo
 3. Two things open:
    - A **black window** with numbered steps (Docker images, AI models, etc.) — **leave it open**.
    - A browser tab titled **Starting Ledgerly…** — it counts elapsed time and opens **http://localhost:8000/** automatically when ready.
-4. **Read [How long startup takes](#how-long-startup-takes-normal-not-broken)** above so you know what to expect—especially the **first** time (often **30+ minutes**). When the black window says **LEDGERLY IS READY** and the browser shows the app, you’re in. Open **How to use** in the app for a short guide, or read **instructions.md** in the install folder.
+4. **Read [How long startup takes](#how-long-startup-takes-normal-not-broken)** above so you know what to expect—especially the **first** time (often **30+ minutes**). When the black window says **LEDGERLY IS READY** and the browser shows the app, you’re in. Open **How to use** in the app for a short guide, or read **instructions.md** in the install folder. To try the app without your own statements, use the **example-kit** folder (two mock PDFs and a short README).
 
 ---
 
