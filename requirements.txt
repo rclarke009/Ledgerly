@@ -13,7 +13,6 @@ pymupdf
 pytesseract
 Pillow
 sentence-transformers
-langgraph
 psycopg[binary]
 watchdog
 prometheus-client

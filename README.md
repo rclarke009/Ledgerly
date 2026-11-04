@@ -12,7 +12,7 @@
 - **Trigger-based guidance** — Surfaces actionable memos when CDs mature or bills come due; otherwise reports *No action required*.
 - **Local-first AI** — Ollama for LLM, embeddings, and vision (OCR fallback for scans). No cloud API required for core Ask and ingest.
 - **Production-minded ops** — Docker Compose stack, portable Windows installer, background ingest/ask queues, Prometheus/Grafana/Loki observability, and CPU/thermal tuning for real laptops.
-- **LangGraph Ask pipeline** — Routes questions through classification, optional finance tools (compound interest, liquidity cross-check, roll options), retrieval, and reranking.
+- **Ask pipeline** — Heuristic routing in `app/ask_graph.py`, then optional local finance tools (compound interest, liquidity cross-check, roll options), retrieval, and optional reranking.
 
 See [FINANCIAL-ASSISTANT.md](FINANCIAL-ASSISTANT.md) for product principles and scope boundaries (CD ladder / safe cash — not a trading or portfolio optimizer).
 
@@ -34,7 +34,7 @@ flowchart LR
 |-------|------|
 | API & UI | FastAPI, static HTML/JS, Pydantic |
 | Retrieval | pgvector (Postgres) or SQLite fallback |
-| Ask routing | LangGraph, local finance tools, optional reranker |
+| Ask routing | Heuristic routing in `ask_graph.py`, local finance tools, optional reranker |
 | Models | Ollama — `qwen3:8b`, `nomic-embed-text`, vision per profile |
 | Deploy | Docker Compose, portable Windows ZIP (`installer/`) |
 | Observability | Prometheus metrics, Grafana dashboards, Loki logs (`docker compose --profile observability up -d`) |
