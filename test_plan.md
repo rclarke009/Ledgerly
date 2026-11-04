@@ -186,7 +186,7 @@ curl -sS -X POST 'http://localhost:8000/ask/image' \
 
 **Expect:** JSON `{"answer": "..."}`.
 
-This path does **not** use the same LangGraph ask trace sequence as `/ask`; correlation is still via normal request logs and `X-Request-ID`.
+This path does **not** use the same Ask trace sequence as `/ask`; correlation is still via normal request logs and `X-Request-ID`.
 
 ---
 

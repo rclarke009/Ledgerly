@@ -1,15 +1,17 @@
-# LangGraph routing + 2-pass RAG testing plan
+# Ask routing + 2-pass RAG testing plan
+
+> **Note:** This matrix describes the older LLM classifier plan (`_classify_route`, routes `data_only` / `docs_only` / `both`). Current Ask routing is `heuristic_route` in `app/ask_graph.py`. See [docs/ask-pipeline-flow.md](../ask-pipeline-flow.md).
 
 ## Scope
 
-This document defines a test plan for the **LangGraph-based query routing** and **2-pass (multi-step) RAG** behavior used by the API endpoints:
+This document defines a test plan for the **classifier-based query routing** and **2-pass (multi-step) RAG** behavior used by the API endpoints:
 
 - `POST /ask` (JSON response)
 - `POST /ask/stream` (NDJSON streaming response)
 
 The orchestration is implemented in:
 
-- `app/ask_graph.py` (LangGraph nodes + routing + retrieval retry)
+- `app/ask_graph.py` (routing + retrieval retry)
 - `app/main.py` (API endpoints that call `build_prompt_and_chunks`)
 
 ## System behavior under test (as implemented)
@@ -102,7 +104,7 @@ For both unit/integration tests, use a fresh SQLite DB per test run:
 
 ### PDF fixtures and RAG validation
 
-- **LangGraph / RAG behavior** (routing in `app/ask_graph.py`, retrieval, 2-pass broadening, filters): Prefer **native text PDFs** (real text layer) or **small pasted ground-truth snippets** ingested via `POST /ingest` so failures reflect graph and retrieval logic, not OCR or vision noise.
+- **Routing / RAG behavior** (routing in `app/ask_graph.py`, retrieval, 2-pass broadening, filters): Prefer **native text PDFs** (real text layer) or **small pasted ground-truth snippets** ingested via `POST /ingest` so failures reflect graph and retrieval logic, not OCR or vision noise.
 - **Scanned / image-like PDFs** (screenshots, scans): Treat as a **separate concern** from graph tests. Use dedicated tests that **mock** `app.pdf_ingest.resolve_pdf_for_ingest` (or the transcription step), or optional integration tests with OCR/vision enabled and fixtures explicitly labeled as scanned-PDF cases.
 - Avoid using **large screenshot PDFs** as the primary regression signal for `ask_graph` or RAG unless the test explicitly targets **post-OCR/post-vision** text quality.
 
@@ -129,7 +131,7 @@ Seed `accounts`, `positions`, `obligations` to ensure `_build_data_summary` prod
 
 ## Test matrix
 
-### A) Routing tests (LangGraph classify + defaults)
+### A) Routing tests (classify + defaults)
 
 - **A1 — `use_rag=False` forces `data_only`**
   - Input: `AskRequest(use_rag=False)`

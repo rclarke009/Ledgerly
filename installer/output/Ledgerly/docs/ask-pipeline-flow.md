@@ -2,7 +2,7 @@
 
 **Ledgerly / Finelly** — Ask orchestration as implemented in `app/ask_graph.py` and `app/main.py`.
 
-> **Note:** Despite the filename `ask_graph.py` and `langgraph` in `requirements.txt`, the codebase **does not currently use LangGraph's `StateGraph` API**. The pipeline is a sequential async function (`build_prompt_and_chunks`) plus API branching in `main.py`.
+> **Note:** The filename `ask_graph.py` is historical. The pipeline is a sequential async function (`build_prompt_and_chunks`) plus API branching in `main.py`. It does not use LangGraph's `StateGraph` API.
 
 ---
 

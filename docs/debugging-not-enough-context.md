@@ -139,4 +139,4 @@ Problems **accepting or inserting** payloads show in Supabase itself, not in Led
 3. **`GET /documents`** / Documents tab → data actually present?  
 4. If you enabled **`REMOTE_LOG_URL`**, **`remote_log_events`** + Edge Function logs for infrastructure errors; otherwise rely on Docker **/`ollama`** logs.
 
-Related internal notes: **`docs/testing/langgraph-rag-testing-plan.md`** (ask graph behavior and log strings).
+Related internal notes: **`docs/testing/ask-routing-rag-testing-plan.md`** (ask graph behavior and log strings).
